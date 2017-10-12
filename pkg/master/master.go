@@ -45,6 +45,7 @@ import (
 	storageapiv1 "k8s.io/api/storage/v1"
 	storageapiv1beta1 "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
 	"k8s.io/apiserver/pkg/registry/generic"
@@ -93,8 +94,6 @@ const (
 	DefaultEndpointReconcilerInterval = 10 * time.Second
 	// DefaultEndpointReconcilerTTL is the default TTL timeout for the storage layer
 	DefaultEndpointReconcilerTTL = 15 * time.Second
-	// DefaultStorageEndpoint is the default storage endpoint for the lease controller
-	DefaultStorageEndpoint = "kube-apiserver-endpoint"
 )
 
 type ExtraConfig struct {
@@ -206,7 +205,8 @@ func (c *Config) createLeaseReconciler() reconcilers.EndpointReconciler {
 	if err != nil {
 		glog.Fatalf("Error creating storage factory: %v", err)
 	}
-	endpointConfig, err := c.ExtraConfig.StorageFactory.NewConfig(kapi.Resource(DefaultStorageEndpoint))
+	defaultStorageEndpoint := c.ExtraConfig.StorageFactory.ResourcePrefix(schema.GroupResource{Group: "", Resource: "endpoints"})
+	endpointConfig, err := c.ExtraConfig.StorageFactory.NewConfig(kapi.Resource(defaultStorageEndpoint))
 	if err != nil {
 		glog.Fatalf("Error getting storage config: %v", err)
 	}
@@ -214,7 +214,7 @@ func (c *Config) createLeaseReconciler() reconcilers.EndpointReconciler {
 		StorageConfig:           endpointConfig,
 		Decorator:               generic.UndecoratedStorage,
 		DeleteCollectionWorkers: 0,
-		ResourcePrefix:          c.ExtraConfig.StorageFactory.ResourcePrefix(kapi.Resource(DefaultStorageEndpoint)),
+		ResourcePrefix:          c.ExtraConfig.StorageFactory.ResourcePrefix(kapi.Resource(defaultStorageEndpoint)),
 	})
 	endpointRegistry := endpoint.NewRegistry(endpointsStorage)
 	masterLeases := reconcilers.NewLeases(leaseStorage, "/masterleases/", ttl)
