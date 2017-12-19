@@ -18,9 +18,11 @@ package remote
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/golang/glog"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 
 	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 	"k8s.io/kubernetes/pkg/kubelet/dockershim"
@@ -38,6 +40,11 @@ type DockerServer struct {
 	server *grpc.Server
 }
 
+var (
+	keepaliveTime    = 3 * time.Minute
+	keepaliveTimeout = 20 * time.Second
+)
+
 // NewDockerServer creates the dockershim grpc server.
 func NewDockerServer(endpoint string, s dockershim.DockerService) *DockerServer {
 	return &DockerServer{
@@ -54,7 +61,13 @@ func (s *DockerServer) Start() error {
 		return fmt.Errorf("failed to listen on %q: %v", s.endpoint, err)
 	}
 	// Create the grpc server and register runtime and image services.
-	s.server = grpc.NewServer()
+	opts := []grpc.ServerOption{
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    keepaliveTime,
+			Timeout: keepaliveTimeout,
+		}),
+	}
+	s.server = grpc.NewServer(opts...)
 	runtimeapi.RegisterRuntimeServiceServer(s.server, s.service)
 	runtimeapi.RegisterImageServiceServer(s.server, s.service)
 	go func() {
