@@ -75,7 +75,7 @@ func TestDevicePluginReRegistration(t *testing.T) {
 		if len(m.Devices()) > 0 {
 			break
 		}
-		time.Sleep(1)
+		time.Sleep(1 * time.Second)
 	}
 	devices := m.Devices()
 	require.Equal(t, 2, len(devices[testResourceName]), "Devices are not updated.")
