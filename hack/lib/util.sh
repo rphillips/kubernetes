@@ -585,6 +585,31 @@ function kube::util::create_client_certkey {
 EOF
 }
 
+
+# create a secrets file for self-hosted : args are sudo, dest_dir
+function kube::util::create_secrets {
+    local sudo=$1
+    local dest_dir=$2
+    pushd ${dest_dir} > /dev/null
+    apiserver_crt=$(${sudo} ${OPENSSL_BIN} base64 -in serving-kube-apiserver.crt | awk 'BEGIN{ORS="";} {print}')
+    apiserver_key=$(${sudo} ${OPENSSL_BIN} base64 -in serving-kube-apiserver.key | awk 'BEGIN{ORS="";} {print}')
+    ca_crt=$(${sudo} ${OPENSSL_BIN} base64 -in server-ca.crt | awk 'BEGIN{ORS="";} {print}')
+    cat <<EOF | ${sudo} tee "${dest_dir}"/secrets.yaml > /dev/null
+apiVersion: v1
+data:
+  apiserver.crt: ${apiserver_crt}
+  apiserver.key: ${apiserver_key}
+  ca.crt: ${ca_crt}
+kind: Secret
+metadata:
+  name: kube-apiserver
+  namespace: kube-system
+type: Opaque
+EOF
+    ${sudo} chown ${username} "${dest_dir}/secrets.yaml"
+    popd > /dev/null
+}
+
 # signs a serving certificate: args are sudo, dest-dir, ca, filename (roughly), subject, hosts...
 function kube::util::create_serving_certkey {
     local sudo=$1
@@ -779,6 +804,90 @@ function kube::util::ensure-gnu-sed {
     kube::log::error "Failed to find GNU sed as sed or gsed. If you are on Mac: brew install gnu-sed." >&2
     return 1
   fi
+}
+
+# creates a self hosted API server, args are sudo, destdir
+function kube::util::create_selfhosted_apiserver {
+    local sudo=$1
+    local dest_dir=$2
+    local client_id=$3
+    selfhosted_api_manifest=selfhosted_api_manifest.yaml
+    cat <<EOF | ${sudo} tee "${dest_dir}/${selfhosted_api_manifest}" > /dev/null
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-apiserver
+  namespace: kube-system
+  labels:
+    tier: control-plane
+    k8s-app: kube-apiserver
+spec:
+  selector:
+    matchLabels:
+      tier: control-plane
+      k8s-app: kube-apiserver
+  template:
+    metadata:
+      labels:
+        tier: control-plane
+        k8s-app: kube-apiserver
+      annotations:
+        node.kubernetes.io/bootstrap-checkpoint: "true"
+    spec:
+      containers:
+      - name: kube-apiserver
+        image: k8s.gcr.io/hyperkube:v1.10.2
+        command:
+        - /hyperkube
+        - apiserver
+        - --enable-admission-plugins=NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultTolerationSeconds,DefaultStorageClass,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota,NodeRestriction
+        - --advertise-address=\$(POD_IP)
+        - --allow-privileged=true
+        - --anonymous-auth=false
+        - --authorization-mode=Node,RBAC
+        - --bind-address=0.0.0.0
+        - --client-ca-file=/etc/kubernetes/ca.crt
+        - --cloud-provider=
+        - --enable-bootstrap-token-auth=true
+        - --etcd-servers=http://127.0.0.1:2379
+        - --insecure-port=0
+        - --kubelet-client-certificate=/etc/kubernetes/secrets/apiserver.crt
+        - --kubelet-client-key=/etc/kubernetes/secrets/apiserver.key
+        - --secure-port=7443
+        - --storage-backend=etcd3
+        - --tls-ca-file=/etc/kubernetes/secrets/ca.crt
+        - --tls-cert-file=/etc/kubernetes/secrets/apiserver.crt
+        - --tls-private-key-file=/etc/kubernetes/secrets/apiserver.key
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        volumeMounts:
+        - mountPath: /etc/ssl/certs
+          name: ssl-certs-host
+          readOnly: true
+        - mountPath: /etc/kubernetes/secrets
+          name: secrets
+          readOnly: true
+      hostNetwork: true
+      volumes:
+      - name: ssl-certs-host
+        hostPath:
+          path: /usr/share/ca-certificates
+      - name: secrets
+        secret:
+          secretName: kube-apiserver
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+EOF
+    ${sudo} $(kube::util::find-binary kubectl) --kubeconfig="${dest_dir}/${client_id}.kubeconfig" create -f ${dest_dir}/secrets.yaml
+    ${sudo} $(kube::util::find-binary kubectl) --kubeconfig="${dest_dir}/${client_id}.kubeconfig" create -f ${dest_dir}/${selfhosted_api_manifest}
 }
 
 # Some useful colors.

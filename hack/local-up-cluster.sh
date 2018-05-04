@@ -19,6 +19,7 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 # This command builds and runs a local kubernetes cluster.
 # You may need to run this as root to allow kubelet to open docker's socket,
 # and to write the test CA in /var/run/kubernetes.
+BOOTSTRAP_CHECKPOINT_PATH=${BOOTSTRAP_CHECKPOINT_PATH:-""}
 DOCKER_OPTS=${DOCKER_OPTS:-""}
 DOCKER=(docker ${DOCKER_OPTS})
 DOCKERIZE_KUBELET=${DOCKERIZE_KUBELET:-""}
@@ -67,6 +68,7 @@ KUBECTL=${KUBECTL:-cluster/kubectl.sh}
 WAIT_FOR_URL_API_SERVER=${WAIT_FOR_URL_API_SERVER:-60}
 MAX_TIME_FOR_URL_API_SERVER=${MAX_TIME_FOR_URL_API_SERVER:-1}
 ENABLE_DAEMON=${ENABLE_DAEMON:-false}
+ENABLE_SELFHOSTED_API=${ENABLE_SELFHOSTED_API:-false}
 HOSTNAME_OVERRIDE=${HOSTNAME_OVERRIDE:-"127.0.0.1"}
 EXTERNAL_CLOUD_PROVIDER=${EXTERNAL_CLOUD_PROVIDER:-false}
 EXTERNAL_CLOUD_PROVIDER_BINARY=${EXTERNAL_CLOUD_PROVIDER_BINARY:-""}
@@ -214,6 +216,7 @@ set +e
 
 API_PORT=${API_PORT:-8080}
 API_SECURE_PORT=${API_SECURE_PORT:-6443}
+API_SELFHOST_PORT=${API_SELFHOST_PORT:-7443}
 
 # WARNING: For DNS to work on most setups you should export API_HOST as the docker0 ip address,
 API_HOST=${API_HOST:-localhost}
@@ -455,6 +458,11 @@ function set_service_accounts {
     fi
 }
 
+function start_selfhosted_apiserver {
+    echo "Starting Selfhosted API Server"
+    kube::util::create_selfhosted_apiserver "${CONTROLPLANE_SUDO}" "${CERT_DIR}" "admin"
+}
+
 function start_apiserver {
     security_admission=""
     if [[ -n "${DENY_SECURITY_CONTEXT_ADMISSION}" ]]; then
@@ -564,6 +572,9 @@ function start_apiserver {
     # TODO remove masters and add rolebinding
     kube::util::create_client_certkey "${CONTROLPLANE_SUDO}" "${CERT_DIR}" 'client-ca' kube-aggregator system:kube-aggregator system:masters
     kube::util::write_client_kubeconfig "${CONTROLPLANE_SUDO}" "${CERT_DIR}" "${ROOT_CA_FILE}" "${API_HOST}" "${API_SECURE_PORT}" kube-aggregator
+
+    # Create secrets for self-hosted
+    kube::util::create_secrets "${CONTROLPLANE_SUDO}" "${CERT_DIR}" "${ROOT_CA_FILE}"
 
     cloud_config_arg="--cloud-provider=${CLOUD_PROVIDER} --cloud-config=${CLOUD_CONFIG}"
     if [[ "${EXTERNAL_CLOUD_PROVIDER:-}" == "true" ]]; then
@@ -699,6 +710,11 @@ function start_kubelet {
       priv_arg="--allow-privileged "
     fi
 
+    checkpoint_arg=""
+    if [[ -n "${BOOTSTRAP_CHECKPOINT_PATH}" ]]; then
+      checkpoint_arg="--bootstrap-checkpoint-path ${BOOTSTRAP_CHECKPOINT_PATH}"
+    fi
+
     cloud_config_arg="--cloud-provider=${CLOUD_PROVIDER} --cloud-config=${CLOUD_CONFIG}"
     if [[ "${EXTERNAL_CLOUD_PROVIDER:-}" == "true" ]]; then
        cloud_config_arg="--cloud-provider=external"
@@ -773,6 +789,7 @@ function start_kubelet {
       --pod-manifest-path="${POD_MANIFEST_PATH}"
       --fail-swap-on="${FAIL_SWAP_ON}"
       ${auth_args}
+      ${checkpoint_arg}
       ${dns_args}
       ${cni_conf_dir_args}
       ${cni_bin_dir_args}
@@ -1057,6 +1074,9 @@ if [[ "${START_MODE}" != "kubeletonly" ]]; then
   start_etcd
   set_service_accounts
   start_apiserver
+  if [[ "${ENABLE_SELFHOSTED_API}" == "true" ]]; then
+      start_selfhosted_apiserver
+  fi
   start_controller_manager
   if [[ "${EXTERNAL_CLOUD_PROVIDER:-}" == "true" ]]; then
     start_cloud_controller_manager
