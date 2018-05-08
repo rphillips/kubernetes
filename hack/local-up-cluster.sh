@@ -215,8 +215,9 @@ fi
 set +e
 
 API_PORT=${API_PORT:-8080}
+API_SELFHOST_PORT=${API_SELFHOST_PORT:-8090}
 API_SECURE_PORT=${API_SECURE_PORT:-6443}
-API_SELFHOST_PORT=${API_SELFHOST_PORT:-7443}
+API_SECURE_SELFHOST_PORT=${API_SECURE_SELFHOST_PORT:-7443}
 
 # WARNING: For DNS to work on most setups you should export API_HOST as the docker0 ip address,
 API_HOST=${API_HOST:-localhost}
@@ -461,6 +462,7 @@ function set_service_accounts {
 function start_selfhosted_apiserver {
     echo "Starting Selfhosted API Server"
     kube::util::create_selfhosted_apiserver "${CONTROLPLANE_SUDO}" "${CERT_DIR}" "admin"
+    sudo sed "s:${API_SECURE_PORT}:${API_SECURE_SELFHOST_PORT}:g" ${CERT_DIR}/admin.kubeconfig > ${CERT_DIR}/admin-selfhosted.kubeconfig
 }
 
 function start_apiserver {
@@ -1015,6 +1017,14 @@ Alternatively, you can write to the default kubeconfig:
   cluster/kubectl.sh config use-context local
   cluster/kubectl.sh
 EOF
+  if [[ -n "${ENABLE_SELFHOSTED_API}" ]]; then
+      cat <<EOF
+
+Self Hosted Configuration:
+  export KUBECONFIG=${CERT_DIR}/admin-selfhosted.kubeconfig
+  cluster/kubectl.sh
+EOF
+  fi
 else
   cat <<EOF
 The kubelet was started.

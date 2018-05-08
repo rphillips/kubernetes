@@ -593,10 +593,12 @@ function kube::util::create_secrets {
     pushd ${dest_dir} > /dev/null
     apiserver_crt=$(${sudo} ${OPENSSL_BIN} base64 -in serving-kube-apiserver.crt | awk 'BEGIN{ORS="";} {print}')
     apiserver_key=$(${sudo} ${OPENSSL_BIN} base64 -in serving-kube-apiserver.key | awk 'BEGIN{ORS="";} {print}')
+    client_ca_crt=$(${sudo} ${OPENSSL_BIN} base64 -in client-ca.crt | awk 'BEGIN{ORS="";} {print}')
     ca_crt=$(${sudo} ${OPENSSL_BIN} base64 -in server-ca.crt | awk 'BEGIN{ORS="";} {print}')
     cat <<EOF | ${sudo} tee "${dest_dir}"/secrets.yaml > /dev/null
 apiVersion: v1
 data:
+  client-ca.crt: ${client_ca_crt}
   apiserver.crt: ${apiserver_crt}
   apiserver.key: ${apiserver_key}
   ca.crt: ${ca_crt}
@@ -846,14 +848,14 @@ spec:
         - --anonymous-auth=false
         - --authorization-mode=Node,RBAC
         - --bind-address=0.0.0.0
-        - --client-ca-file=/etc/kubernetes/ca.crt
+        - --client-ca-file=/etc/kubernetes/secrets/client-ca.crt
         - --cloud-provider=
         - --enable-bootstrap-token-auth=true
-        - --etcd-servers=http://127.0.0.1:2379
+        - --etcd-servers=http://${ETCD_HOST}:${ETCD_PORT}
         - --insecure-port=0
         - --kubelet-client-certificate=/etc/kubernetes/secrets/apiserver.crt
         - --kubelet-client-key=/etc/kubernetes/secrets/apiserver.key
-        - --secure-port=7443
+        - --secure-port=${API_SECURE_SELFHOST_PORT}
         - --storage-backend=etcd3
         - --tls-ca-file=/etc/kubernetes/secrets/ca.crt
         - --tls-cert-file=/etc/kubernetes/secrets/apiserver.crt
