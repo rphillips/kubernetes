@@ -116,7 +116,7 @@ func (c *PodConfig) Restore(path string, updates chan<- interface{}) error {
 	var err error
 	if c.checkpointManager == nil {
 		c.checkpointManager, err = checkpointmanager.NewCheckpointManager(path)
-		if err != nil {
+		if err == nil {
 			pods, err := checkpoint.LoadPods(c.checkpointManager)
 			if err == nil {
 				updates <- kubetypes.PodUpdate{Pods: pods, Op: kubetypes.RESTORE, Source: kubetypes.ApiserverSource}
