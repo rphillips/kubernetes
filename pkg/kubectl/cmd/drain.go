@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/jonboulle/clockwork"
 	"github.com/spf13/cobra"
 
@@ -604,6 +605,7 @@ func (o *DrainOptions) evictPods(pods []corev1.Pod, policyGroupVersion string, g
 	}
 
 	doneCount := 0
+	errCount := 0
 	// 0 timeout means infinite, we use MaxInt64 to represent it.
 	var globalTimeout time.Duration
 	if o.Timeout == 0 {
@@ -615,16 +617,21 @@ func (o *DrainOptions) evictPods(pods []corev1.Pod, policyGroupVersion string, g
 	for {
 		select {
 		case err := <-errCh:
-			return err
+			errCount++
+			glog.V(1).Info(err)
 		case <-doneCh:
 			doneCount++
-			if doneCount == len(pods) {
-				return nil
-			}
 		case <-globalTimeoutCh:
 			return fmt.Errorf("Drain did not complete within %v", globalTimeout)
 		}
+		if (doneCount + errCount) == len(pods) {
+			break
+		}
 	}
+	if errCount > 0 {
+		return fmt.Errorf("%v error(s) while waiting for eviction", errCount)
+	}
+	return nil
 }
 
 func (o *DrainOptions) deletePods(pods []corev1.Pod, getPodFn func(namespace, name string) (*corev1.Pod, error)) error {
