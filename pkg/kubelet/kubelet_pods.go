@@ -1096,7 +1096,7 @@ func (kl *Kubelet) HandlePodCleanups() error {
 
 	// Remove any cgroups in the hierarchy for pods that are no longer running.
 	if kl.cgroupsPerQOS {
-		kl.cleanupOrphanedPodCgroups(cgroupPods, activePods)
+		kl.cleanupOrphanedPodCgroups(cgroupPods, activePods, mirrorPods)
 	}
 
 	kl.backOff.GC()
@@ -1715,10 +1715,13 @@ func (kl *Kubelet) GetPortForward(podName, podNamespace string, podUID types.UID
 
 // cleanupOrphanedPodCgroups removes cgroups that should no longer exist.
 // it reconciles the cached state of cgroupPods with the specified list of runningPods
-func (kl *Kubelet) cleanupOrphanedPodCgroups(cgroupPods map[types.UID]cm.CgroupName, activePods []*v1.Pod) {
+func (kl *Kubelet) cleanupOrphanedPodCgroups(cgroupPods map[types.UID]cm.CgroupName, activePods []*v1.Pod, mirrorPods []*v1.Pod) {
 	// Add all running pods to the set that we want to preserve
 	podSet := sets.NewString()
 	for _, pod := range activePods {
+		podSet.Insert(string(pod.UID))
+	}
+	for _, pod := range mirrorPods {
 		podSet.Insert(string(pod.UID))
 	}
 	pcm := kl.containerManager.NewPodContainerManager()
