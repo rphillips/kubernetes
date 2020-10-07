@@ -32,6 +32,7 @@ import (
 	statsapi "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
 	"k8s.io/kubernetes/pkg/features"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
+	"k8s.io/kubernetes/pkg/kubelet/handlers"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
 )
 
@@ -1767,6 +1768,36 @@ func TestParsePercentage(t *testing.T) {
 		}
 		if value != expected.value {
 			t.Errorf("Test case: %s, expected: %v, actual: %v", input, expected.value, value)
+		}
+	}
+}
+
+func TestPodIsEvicted(t *testing.T) {
+	testCases := []struct {
+		reason string
+		equal  bool
+	}{
+		{
+			reason: handlers.ActiveDeadlineReason,
+			equal:  true,
+		},
+		{
+			reason: Reason,
+			equal:  true,
+		},
+		{
+			reason: "This reason will fail",
+			equal:  false,
+		},
+	}
+	for i, testCase := range testCases {
+		podStatus := v1.PodStatus{
+			Reason: testCase.reason,
+			Phase:  v1.PodFailed,
+		}
+		result := PodIsEvicted(podStatus)
+		if result != testCase.equal {
+			t.Errorf("Test case: %v failed", i)
 		}
 	}
 }

@@ -14,13 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kubelet
+package handlers
 
 import (
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
@@ -30,6 +32,22 @@ import (
 // mockPodStatusProvider returns the status on the specified pod
 type mockPodStatusProvider struct {
 	pods []*v1.Pod
+}
+
+func newTestPods(count int) []*v1.Pod {
+	pods := make([]*v1.Pod, count)
+	for i := 0; i < count; i++ {
+		pods[i] = &v1.Pod{
+			Spec: v1.PodSpec{
+				HostNetwork: true,
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				UID:  types.UID(strconv.Itoa(10000 + i)),
+				Name: fmt.Sprintf("pod%d", i),
+			},
+		}
+	}
+	return pods
 }
 
 // GetPodStatus returns the status on the associated pod with matching uid (if found)
@@ -48,7 +66,7 @@ func TestActiveDeadlineHandler(t *testing.T) {
 	fakeClock := clock.NewFakeClock(time.Now())
 	podStatusProvider := &mockPodStatusProvider{pods: pods}
 	fakeRecorder := &record.FakeRecorder{}
-	handler, err := newActiveDeadlineHandler(podStatusProvider, fakeRecorder, fakeClock)
+	handler, err := NewActiveDeadlineHandler(podStatusProvider, fakeRecorder, fakeClock)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,11 +102,11 @@ func TestActiveDeadlineHandler(t *testing.T) {
 			t.Errorf("[%d] ShouldEvict.Evict expected %#v, got %#v", i, testCase.expected, actual.Evict)
 		}
 		if testCase.expected {
-			if actual.Reason != reason {
-				t.Errorf("[%d] ShouldEvict.Reason expected %#v, got %#v", i, message, actual.Reason)
+			if actual.Reason != ActiveDeadlineReason {
+				t.Errorf("[%d] ShouldEvict.Reason expected %#v, got %#v", i, ActiveDeadlineReason, actual.Reason)
 			}
-			if actual.Message != message {
-				t.Errorf("[%d] ShouldEvict.Message expected %#v, got %#v", i, message, actual.Message)
+			if actual.Message != ActiveDeadlineMessage {
+				t.Errorf("[%d] ShouldEvict.Message expected %#v, got %#v", i, ActiveDeadlineMessage, actual.Message)
 			}
 		}
 	}

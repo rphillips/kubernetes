@@ -31,6 +31,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/v1/pod"
 	v1resource "k8s.io/kubernetes/pkg/api/v1/resource"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
+	"k8s.io/kubernetes/pkg/kubelet/handlers"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
 	volumeutils "k8s.io/kubernetes/pkg/volume/util"
 )
@@ -1012,7 +1013,7 @@ func buildSignalToRankFunc(withImageFs bool) map[evictionapi.Signal]rankFunc {
 
 // PodIsEvicted returns true if the reported pod status is due to an eviction.
 func PodIsEvicted(podStatus v1.PodStatus) bool {
-	return podStatus.Phase == v1.PodFailed && podStatus.Reason == Reason
+	return podStatus.Phase == v1.PodFailed && (podStatus.Reason == Reason || handlers.IsEvictionReason(podStatus.Reason))
 }
 
 // buildSignalToNodeReclaimFuncs returns reclaim functions associated with resources.

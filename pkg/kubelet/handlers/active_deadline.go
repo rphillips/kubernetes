@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kubelet
+package handlers
 
 import (
 	"fmt"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/kubelet/lifecycle"
@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	reason  = "DeadlineExceeded"
-	message = "Pod was active on the node longer than the specified deadline"
+	ActiveDeadlineReason  = "DeadlineExceeded"
+	ActiveDeadlineMessage = "Pod was active on the node longer than the specified deadline"
 )
 
 // activeDeadlineHandler knows how to enforce active deadlines on pods.
@@ -42,8 +42,8 @@ type activeDeadlineHandler struct {
 	recorder record.EventRecorder
 }
 
-// newActiveDeadlineHandler returns an active deadline handler that can enforce pod active deadline
-func newActiveDeadlineHandler(
+// NewActiveDeadlineHandler returns an active deadline handler that can enforce pod active deadline
+func NewActiveDeadlineHandler(
 	podStatusProvider status.PodStatusProvider,
 	recorder record.EventRecorder,
 	clock clock.Clock,
@@ -71,8 +71,8 @@ func (m *activeDeadlineHandler) ShouldEvict(pod *v1.Pod) lifecycle.ShouldEvictRe
 	if !m.pastActiveDeadline(pod) {
 		return lifecycle.ShouldEvictResponse{Evict: false}
 	}
-	m.recorder.Eventf(pod, v1.EventTypeNormal, reason, message)
-	return lifecycle.ShouldEvictResponse{Evict: true, Reason: reason, Message: message}
+	m.recorder.Eventf(pod, v1.EventTypeNormal, ActiveDeadlineReason, ActiveDeadlineMessage)
+	return lifecycle.ShouldEvictResponse{Evict: true, Reason: ActiveDeadlineReason, Message: ActiveDeadlineMessage}
 }
 
 // pastActiveDeadline returns true if the pod has been active for more than its ActiveDeadlineSeconds
