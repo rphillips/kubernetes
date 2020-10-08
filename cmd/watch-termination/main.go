@@ -131,8 +131,11 @@ func run() int {
 
 		if *gracefulTerminatioPeriod > 2*time.Second {
 			go func() {
-				<-termCh
-				<-time.After(*gracefulTerminatioPeriod - 2*time.Second)
+				select {
+				case <-termCh:
+					return
+				case <-time.After(*gracefulTerminatioPeriod - 2*time.Second):
+				}
 
 				deleteLockOnce.Do(func() {
 					klog.Infof("Graceful termination time nearly passed and kube-apiserver has still not terminated. Deleting termination lock file %q to avoid a false positive.", *terminationLock)
