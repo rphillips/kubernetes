@@ -36,8 +36,8 @@ const (
 
 	DefaultCompactInterval      = 5 * time.Minute
 	DefaultDBMetricPollInterval = 30 * time.Second
-	DefaultHealthcheckTimeout   = 2 * time.Second
-	DefaultReadinessTimeout     = 2 * time.Second
+	DefaultHealthcheckTimeout   = 10 * time.Second
+	DefaultReadinessTimeout     = 10 * time.Second
 )
 
 // TransportConfig holds all connection related info,  i.e. equal TransportConfig means equal servers we talk to.
