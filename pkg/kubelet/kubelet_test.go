@@ -106,13 +106,14 @@ func (f *fakeImageGCManager) GetImageList() ([]kubecontainer.Image, error) {
 }
 
 type TestKubelet struct {
-	kubelet          *Kubelet
-	fakeRuntime      *containertest.FakeRuntime
-	fakeKubeClient   *fake.Clientset
-	fakeMirrorClient *podtest.FakeMirrorClient
-	fakeClock        *clock.FakeClock
-	mounter          mount.Interface
-	volumePlugin     *volumetest.FakeVolumePlugin
+	kubelet              *Kubelet
+	fakeRuntime          *containertest.FakeRuntime
+	fakeContainerManager *cm.FakeContainerManager
+	fakeKubeClient       *fake.Clientset
+	fakeMirrorClient     *podtest.FakeMirrorClient
+	fakeClock            *clock.FakeClock
+	mounter              mount.Interface
+	volumePlugin         *volumetest.FakeVolumePlugin
 }
 
 func (tk *TestKubelet) Cleanup() {
@@ -240,7 +241,8 @@ func newTestKubeletWithImageList(
 	kubelet.livenessManager = proberesults.NewManager()
 	kubelet.startupManager = proberesults.NewManager()
 
-	kubelet.containerManager = cm.NewStubContainerManager()
+	fakeContainerManager := cm.NewFakeContainerManager()
+	kubelet.containerManager = fakeContainerManager
 	fakeNodeRef := &v1.ObjectReference{
 		Kind:      "Node",
 		Name:      testKubeletHostname,
@@ -349,7 +351,7 @@ func newTestKubeletWithImageList(
 
 	kubelet.AddPodSyncLoopHandler(activeDeadlineHandler)
 	kubelet.AddPodSyncHandler(activeDeadlineHandler)
-	return &TestKubelet{kubelet, fakeRuntime, fakeKubeClient, fakeMirrorClient, fakeClock, nil, plug}
+	return &TestKubelet{kubelet, fakeRuntime, fakeContainerManager, fakeKubeClient, fakeMirrorClient, fakeClock, nil, plug}
 }
 
 func newTestPods(count int) []*v1.Pod {
@@ -403,6 +405,60 @@ func TestSyncPodsStartPod(t *testing.T) {
 	kubelet.podManager.SetPods(pods)
 	kubelet.HandlePodSyncs(pods)
 	fakeRuntime.AssertStartedPods([]string{string(pods[0].UID)})
+}
+
+func TestSyncPodsDeletesWhenSourcesAreReadyPerQOS(t *testing.T) {
+	ready := false
+
+	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
+	defer testKubelet.Cleanup()
+
+	pod := &kubecontainer.Pod{
+		ID:        "12345678",
+		Name:      "foo",
+		Namespace: "new",
+		Containers: []*kubecontainer.Container{
+			{Name: "bar"},
+		},
+	}
+
+	fakeRuntime := testKubelet.fakeRuntime
+	fakeContainerManager := testKubelet.fakeContainerManager
+	fakeContainerManager.PodContainerManager.AddPodFromCgroups(pod)
+	fakeRuntime.PodList = []*containertest.FakePod{
+		{Pod: pod},
+	}
+	kubelet := testKubelet.kubelet
+	go kubelet.podKiller.PerformPodKillingWork()
+	defer kubelet.podKiller.Close()
+	kubelet.cgroupsPerQOS = true
+	kubelet.sourcesReady = config.NewSourcesReady(func(_ sets.String) bool { return ready })
+
+	kubelet.HandlePodCleanups()
+	time.Sleep(2 * time.Second)
+	fakeRuntime.AssertKilledPods([]string{}) // Sources are not ready yet. Don't remove any pods.
+
+	ready = true
+	kubelet.HandlePodCleanups()
+	time.Sleep(2 * time.Second)
+	// Sources are ready. Remove unwanted pods.
+	fakeRuntime.AssertKilledPods([]string{"12345678"})
+
+	kubelet.HandlePodCleanups()
+	time.Sleep(2 * time.Second)
+	kubelet.HandlePodCleanups()
+	time.Sleep(2 * time.Second)
+	kubelet.HandlePodCleanups()
+	time.Sleep(2 * time.Second)
+
+	destroyCount := 0
+	for _, functionName := range fakeContainerManager.PodContainerManager.CalledFunctions {
+		if functionName == "Destroy" {
+			destroyCount = destroyCount + 1
+		}
+	}
+	assert.Equal(t, 1, destroyCount, "Expect only 1 destroy")
+	assert.True(t, len(fakeContainerManager.PodContainerManager.CalledFunctions) > 2, "expect more than two PodContainerManager calls")
 }
 
 func TestSyncPodsDeletesWhenSourcesAreReady(t *testing.T) {
