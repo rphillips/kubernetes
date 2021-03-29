@@ -38,7 +38,9 @@ import (
 	k8s_api_v1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
+	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
 	"k8s.io/kubernetes/pkg/kubelet/events"
+	"k8s.io/kubernetes/pkg/kubelet/managed"
 	"k8s.io/kubernetes/pkg/kubelet/nodestatus"
 	"k8s.io/kubernetes/pkg/kubelet/util"
 	nodeutil "k8s.io/kubernetes/pkg/util/node"
@@ -115,6 +117,7 @@ func (kl *Kubelet) tryRegisterWithAPIServer(node *v1.Node) bool {
 	requiresUpdate = kl.updateDefaultLabels(node, existingNode) || requiresUpdate
 	requiresUpdate = kl.reconcileExtendedResource(node, existingNode) || requiresUpdate
 	requiresUpdate = kl.reconcileHugePageResource(node, existingNode) || requiresUpdate
+	requiresUpdate = kl.addManagementNodeCapacity(node, existingNode) || requiresUpdate
 	if requiresUpdate {
 		if _, _, err := nodeutil.PatchNodeStatus(kl.kubeClient.CoreV1(), types.NodeName(kl.nodeName), originalNode, existingNode); err != nil {
 			klog.Errorf("Unable to reconcile node %q with API server: error updating node: %v", kl.nodeName, err)
@@ -122,6 +125,27 @@ func (kl *Kubelet) tryRegisterWithAPIServer(node *v1.Node) bool {
 		}
 	}
 
+	return true
+}
+
+// addManagementNodeCapacity adds the managednode capacity to the node
+func (kl *Kubelet) addManagementNodeCapacity(initialNode, existingNode *v1.Node) bool {
+	if !managed.IsEnabled() {
+		return false
+	}
+	updateDefaultResources(initialNode, existingNode)
+	machineInfo, err := kl.cadvisor.MachineInfo()
+	if err != nil {
+		klog.Errorf("Unable to calculate managed node capacity for %q: %v", kl.nodeName, err)
+		return false
+	}
+	cpuRequest := cadvisor.CapacityFromMachineInfo(machineInfo)[v1.ResourceCPU]
+	cpuRequestInMilli := cpuRequest.MilliValue()
+	newCPURequest := resource.NewMilliQuantity(cpuRequestInMilli*1000, cpuRequest.Format)
+	if existingCapacity, ok := existingNode.Status.Capacity[v1.ResourceName(managed.ManagedCapacityLabel)]; ok && existingCapacity.Equal(*newCPURequest) {
+		return false
+	}
+	existingNode.Status.Capacity[v1.ResourceName(managed.ManagedCapacityLabel)] = *newCPURequest
 	return true
 }
 

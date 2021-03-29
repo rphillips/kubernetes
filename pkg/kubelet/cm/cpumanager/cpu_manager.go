@@ -35,6 +35,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager"
 	"k8s.io/kubernetes/pkg/kubelet/config"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
+	"k8s.io/kubernetes/pkg/kubelet/managed"
 	"k8s.io/kubernetes/pkg/kubelet/status"
 )
 
@@ -210,7 +211,6 @@ func (m *manager) Start(activePods ActivePodsFunc, sourcesReady config.SourcesRe
 		klog.Errorf("[cpumanager] policy start error: %v", err)
 		return err
 	}
-
 	if m.policy.Name() == string(PolicyNone) {
 		return nil
 	}
@@ -375,6 +375,10 @@ func (m *manager) reconcileState() (success []reconciledContainer, failure []rec
 		if !ok {
 			klog.Warningf("[cpumanager] reconcileState: skipping pod; status not found (pod: %s)", pod.Name)
 			failure = append(failure, reconciledContainer{pod.Name, "", ""})
+			continue
+		}
+		if managed.IsPodManaged(pod) {
+			klog.Warningf("[cpumanager] reconcileState: skipping pod; pod is managed (pod: %s)", pod.Name)
 			continue
 		}
 
