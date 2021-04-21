@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -196,6 +197,12 @@ func (m *podContainerManagerImpl) Destroy(podCgroup CgroupName) error {
 	}
 	if err := m.cgroupManager.Destroy(containerConfig); err != nil {
 		klog.InfoS("Failed to delete cgroup paths", "cgroupName", podCgroup, "err", err)
+		re := regexp.MustCompile(`cpu:(.*) cpuacct:`)
+		if matches := re.FindStringSubmatch(err.Error()); len(matches) == 2 {
+			if procs, err := ioutil.ReadFile(path.Join(matches[1], "cgroup.procs")); err == nil {
+				klog.InfoS("rphillips: cgroup.procs", "procs", procs)
+			}
+		}
 		return fmt.Errorf("failed to delete cgroup paths for %v : %v", podCgroup, err)
 	}
 	return nil
