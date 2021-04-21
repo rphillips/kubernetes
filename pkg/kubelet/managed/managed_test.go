@@ -24,7 +24,7 @@ func TestStaticPodManaged(t *testing.T) {
 					UID:       "12345",
 					Namespace: "mynamespace",
 					Annotations: map[string]string{
-						"workload.openshift.io/management": "",
+						"target.workload.openshift.io/management": "",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -47,8 +47,8 @@ func TestStaticPodManaged(t *testing.T) {
 				},
 			},
 			expectedAnnotations: map[string]string{
-				"workload.openshift.io/management":                 "",
-				"io.openshift.workload.management.cpushares/nginx": "102",
+				"target.workload.openshift.io/management": "",
+				"resources.workload.openshift.io/nginx":   `{"cpushares":"102"}`,
 			},
 		},
 		{
@@ -62,7 +62,7 @@ func TestStaticPodManaged(t *testing.T) {
 					UID:       "12345",
 					Namespace: "mynamespace",
 					Annotations: map[string]string{
-						"workload.openshift.io/management": "",
+						"target.workload.openshift.io/management": "",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -105,10 +105,10 @@ func TestStaticPodManaged(t *testing.T) {
 				},
 			},
 			expectedAnnotations: map[string]string{
-				"workload.openshift.io/management":               "",
-				"io.openshift.workload.management.cpushares/c1":  "102",
-				"io.openshift.workload.management.cpushares/c2":  "1024",
-				"io.openshift.workload.management.cpushares/c_3": "1024",
+				"target.workload.openshift.io/management": "",
+				"resources.workload.openshift.io/c1":      `{"cpushares":"102"}`,
+				"resources.workload.openshift.io/c2":      `{"cpushares":"1024"}`,
+				"resources.workload.openshift.io/c_3":     `{"cpushares":"1024"}`,
 			},
 		},
 	}
@@ -157,7 +157,7 @@ func TestStaticPodThrottle(t *testing.T) {
 					UID:       "12345",
 					Namespace: "mynamespace",
 					Annotations: map[string]string{
-						"workload.openshift.io/throttle": "",
+						"target.workload.openshift.io/throttle": "",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -180,8 +180,8 @@ func TestStaticPodThrottle(t *testing.T) {
 				},
 			},
 			expectedAnnotations: map[string]string{
-				"workload.openshift.io/throttle":                 "",
-				"io.openshift.workload.throttle.cpushares/nginx": "102",
+				"target.workload.openshift.io/throttle": "",
+				"resources.workload.openshift.io/nginx": `{"cpushares":"102"}`,
 			},
 		},
 		{
@@ -195,7 +195,7 @@ func TestStaticPodThrottle(t *testing.T) {
 					UID:       "12345",
 					Namespace: "mynamespace",
 					Annotations: map[string]string{
-						"workload.openshift.io/throttle": "",
+						"target.workload.openshift.io/throttle": "",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -238,10 +238,10 @@ func TestStaticPodThrottle(t *testing.T) {
 				},
 			},
 			expectedAnnotations: map[string]string{
-				"workload.openshift.io/throttle":               "",
-				"io.openshift.workload.throttle.cpushares/c1":  "102",
-				"io.openshift.workload.throttle.cpushares/c2":  "1024",
-				"io.openshift.workload.throttle.cpushares/c_3": "1024",
+				"target.workload.openshift.io/throttle": "",
+				"resources.workload.openshift.io/c1":    `{"cpushares":"102"}`,
+				"resources.workload.openshift.io/c2":    `{"cpushares":"1024"}`,
+				"resources.workload.openshift.io/c_3":   `{"cpushares":"1024"}`,
 			},
 		},
 	}

@@ -16,6 +16,7 @@ limitations under the License.
 package managed
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -25,12 +26,26 @@ import (
 )
 
 var (
-	pinnedManagementEnabled      bool
-	pinnedManagementFilename     = "/etc/kubernetes/openshift-workload-pinning"
-	WorkloadsAnnotationPrefix    = "workload.openshift.io/"
-	WorkloadsCapacitySuffix      = "workload.openshift.io/cores"
-	ContainerCpuAnnotationFormat = "io.openshift.workload.%v.cpushares/%v"
+	pinnedManagementEnabled   bool
+	pinnedManagementFilename  = "/etc/kubernetes/openshift-workload-pinning"
+	WorkloadsAnnotationPrefix = "target.workload.openshift.io/"
+	WorkloadsCapacitySuffix   = "workload.openshift.io/cores"
+	ContainerAnnotationFormat = "resources.workload.openshift.io/%v"
 )
+
+type WorkloadContainerAnnotation struct {
+	CpuShares string `json:"cpushares"`
+}
+
+func NewWorkloadContainerAnnotation(cpushares uint64) WorkloadContainerAnnotation {
+	return WorkloadContainerAnnotation{
+		CpuShares: fmt.Sprintf("%v", cpushares),
+	}
+}
+
+func (w WorkloadContainerAnnotation) Serialize() ([]byte, error) {
+	return json.Marshal(w)
+}
 
 func init() {
 	readEnablementFile()
@@ -87,10 +102,11 @@ func updateContainers(workloadName string, pod *v1.Pod, containers []v1.Containe
 		}
 		cpuRequest := container.Resources.Requests[v1.ResourceCPU]
 		cpuRequestInMilli := cpuRequest.MilliValue()
-		resourceLimit := fmt.Sprintf("%v", MilliCPUToShares(cpuRequestInMilli))
 
-		containerNameKey := fmt.Sprintf(ContainerCpuAnnotationFormat, workloadName, container.Name)
-		pod.Annotations[containerNameKey] = resourceLimit
+		containerAnnotation := NewWorkloadContainerAnnotation(MilliCPUToShares(cpuRequestInMilli))
+		jsonAnnotation, _ := containerAnnotation.Serialize()
+		containerNameKey := fmt.Sprintf(ContainerAnnotationFormat, container.Name)
+		pod.Annotations[containerNameKey] = string(jsonAnnotation)
 
 		newCPURequest := resource.NewMilliQuantity(cpuRequestInMilli*1000, cpuRequest.Format)
 		container.Resources.Requests[GenerateResourceName(workloadName)] = *newCPURequest
