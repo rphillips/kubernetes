@@ -2020,6 +2020,9 @@ func (kl *Kubelet) syncLoopIteration(configCh <-chan kubetypes.PodUpdate, handle
 			if err := handler.HandlePodCleanups(); err != nil {
 				klog.ErrorS(err, "Failed cleaning pods")
 			}
+			if err := kl.podManager.DeleteFailedMirrorPods(); err != nil {
+				klog.ErrorS(err, "Failed cleaning up mirror pods")
+			}
 		}
 	}
 	return true

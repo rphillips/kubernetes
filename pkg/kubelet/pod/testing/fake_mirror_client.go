@@ -19,7 +19,7 @@ package testing
 import (
 	"sync"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
@@ -58,6 +58,12 @@ func (fmc *FakeMirrorClient) DeleteMirrorPod(podFullName string, _ *types.UID) (
 	fmc.mirrorPods.Delete(podFullName)
 	fmc.deleteCounts[podFullName]++
 	return true, nil
+}
+
+func (fmc *FakeMirrorClient) DeleteFailedMirrorPods() error {
+	fmc.mirrorPodLock.Lock()
+	defer fmc.mirrorPodLock.Unlock()
+	return nil
 }
 
 func (fmc *FakeMirrorClient) HasPod(podFullName string) bool {

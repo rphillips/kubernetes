@@ -19,15 +19,22 @@ package pod
 import (
 	"context"
 	"fmt"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/cache"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
+)
+
+const (
+	CacheMaxCountForFailedMirrorPods = 100
+	CacheDurationForFailedMirrorPods = time.Duration(10 * time.Minute)
 )
 
 // MirrorClient knows how to create/delete a mirror pod in the API server.
@@ -40,6 +47,8 @@ type MirrorClient interface {
 	// DeleteMirrorPod deletes the mirror pod with the given full name from
 	// the API server or returns an error.
 	DeleteMirrorPod(podFullName string, uid *types.UID) (bool, error)
+	// DeleteFailedMirrorPods deletes any failed mirror pod deletions.
+	DeleteFailedMirrorPods() error
 }
 
 // nodeGetter is a subset a NodeLister, simplified for testing.
@@ -55,6 +64,7 @@ type basicMirrorClient struct {
 	apiserverClient clientset.Interface
 	nodeGetter      nodeGetter
 	nodeName        string
+	failedCache     *cache.LRUExpireCache
 }
 
 // NewBasicMirrorClient returns a new MirrorClient.
@@ -63,6 +73,7 @@ func NewBasicMirrorClient(apiserverClient clientset.Interface, nodeName string, 
 		apiserverClient: apiserverClient,
 		nodeName:        nodeName,
 		nodeGetter:      nodeGetter,
+		failedCache:     cache.NewLRUExpireCache(CacheMaxCountForFailedMirrorPods),
 	}
 }
 
@@ -130,6 +141,7 @@ func (mc *basicMirrorClient) DeleteMirrorPod(podFullName string, uid *types.UID)
 			// We should return the error here, but historically this routine does
 			// not return an error unless it can't parse the pod name
 			klog.ErrorS(err, "Failed deleting a mirror pod", "pod", klog.KRef(namespace, name))
+			mc.failedCache.Add(podFullName, uid, CacheDurationForFailedMirrorPods)
 		}
 		return false, nil
 	}
@@ -145,6 +157,21 @@ func (mc *basicMirrorClient) getNodeUID() (types.UID, error) {
 		return "", fmt.Errorf("UID unset for node %s", mc.nodeName)
 	}
 	return node.UID, nil
+}
+
+func (mc *basicMirrorClient) DeleteFailedMirrorPods() error {
+	keys := mc.failedCache.Keys()
+	for _, value := range keys {
+		podFullName := value.(string)
+		if uid, ok := mc.failedCache.Get(podFullName); ok {
+			go func(podFullName string, uid *types.UID) {
+				if ok, _ := mc.DeleteMirrorPod(podFullName, uid); ok {
+					mc.failedCache.Remove(podFullName)
+				}
+			}(podFullName, uid.(*types.UID))
+		}
+	}
+	return nil
 }
 
 // IsStaticPod returns true if the passed Pod is static.
