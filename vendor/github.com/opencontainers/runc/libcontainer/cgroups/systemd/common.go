@@ -364,7 +364,7 @@ func stopUnit(dbusConnection *systemdDbus.Conn, unitName string) error {
 			if s != "done" {
 				logrus.Warnf("error removing unit `%s`: got `%s`. Continuing...", unitName, s)
 			}
-		case <-time.After(time.Second):
+		case <-time.After(30 * time.Second):
 			logrus.Warnf("Timed out while waiting for StopUnit(%s) completion signal from dbus. Continuing...", unitName)
 		}
 	}
