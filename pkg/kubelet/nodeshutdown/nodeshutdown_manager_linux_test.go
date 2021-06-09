@@ -34,6 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/apis/scheduling"
 	pkgfeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/nodeshutdown/systemd"
+	probetest "k8s.io/kubernetes/pkg/kubelet/prober/testing"
 )
 
 type fakeDbus struct {
@@ -224,7 +225,7 @@ func TestManager(t *testing.T) {
 			}
 			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, pkgfeatures.GracefulNodeShutdown, true)()
 
-			manager, _ := NewManager(activePodsFunc, killPodsFunc, func() {}, tc.shutdownGracePeriodRequested, tc.shutdownGracePeriodCriticalPods)
+			manager, _ := NewManager(activePodsFunc, killPodsFunc, func() {}, tc.shutdownGracePeriodRequested, tc.shutdownGracePeriodCriticalPods, probetest.FakeManager{})
 			manager.clock = clock.NewFakeClock(time.Now())
 
 			err := manager.Start()
@@ -298,7 +299,7 @@ func TestFeatureEnabled(t *testing.T) {
 			}
 			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, pkgfeatures.GracefulNodeShutdown, tc.featureGateEnabled)()
 
-			manager, _ := NewManager(activePodsFunc, killPodsFunc, func() {}, tc.shutdownGracePeriodRequested, 0 /*shutdownGracePeriodCriticalPods*/)
+			manager, _ := NewManager(activePodsFunc, killPodsFunc, func() {}, tc.shutdownGracePeriodRequested, 0 /*shutdownGracePeriodCriticalPods*/, probetest.FakeManager{})
 			manager.clock = clock.NewFakeClock(time.Now())
 
 			assert.Equal(t, tc.expectEnabled, manager.isFeatureEnabled())
