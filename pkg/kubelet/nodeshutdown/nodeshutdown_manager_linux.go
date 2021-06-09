@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/eviction"
 	"k8s.io/kubernetes/pkg/kubelet/lifecycle"
 	"k8s.io/kubernetes/pkg/kubelet/nodeshutdown/systemd"
+	"k8s.io/kubernetes/pkg/kubelet/prober"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
 )
 
@@ -74,11 +75,13 @@ type Manager struct {
 	nodeShuttingDownMutex sync.Mutex
 	nodeShuttingDownNow   bool
 
+	probeManager prober.Manager
+
 	clock clock.Clock
 }
 
 // NewManager returns a new node shutdown manager.
-func NewManager(getPodsFunc eviction.ActivePodsFunc, killPodFunc eviction.KillPodFunc, syncNodeStatus func(), shutdownGracePeriodRequested, shutdownGracePeriodCriticalPods time.Duration) (*Manager, lifecycle.PodAdmitHandler) {
+func NewManager(getPodsFunc eviction.ActivePodsFunc, killPodFunc eviction.KillPodFunc, syncNodeStatus func(), shutdownGracePeriodRequested, shutdownGracePeriodCriticalPods time.Duration, probeManager prober.Manager) (*Manager, lifecycle.PodAdmitHandler) {
 	manager := &Manager{
 		getPods:                         getPodsFunc,
 		killPod:                         killPodFunc,
@@ -86,6 +89,7 @@ func NewManager(getPodsFunc eviction.ActivePodsFunc, killPodFunc eviction.KillPo
 		shutdownGracePeriodRequested:    shutdownGracePeriodRequested,
 		shutdownGracePeriodCriticalPods: shutdownGracePeriodCriticalPods,
 		clock:                           clock.RealClock{},
+		probeManager:                    probeManager,
 	}
 	return manager, manager
 }
