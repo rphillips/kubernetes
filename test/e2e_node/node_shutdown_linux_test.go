@@ -39,7 +39,7 @@ import (
 	testutils "k8s.io/kubernetes/test/utils"
 )
 
-var _ = SIGDescribe("GracefulNodeShutdown [Serial] [NodeAlphaFeature:GracefulNodeShutdown]", func() {
+var _ = SIGDescribe("GracefulNodeShutdown [Serial] [NodeBetaFeature:GracefulNodeShutdown] [NodeAlphaFeature:PodPriorityBasedGracefulShutdown]", func() {
 	f := framework.NewDefaultFramework("graceful-node-shutdown")
 	ginkgo.Context("when gracefully shutting down", func() {
 
