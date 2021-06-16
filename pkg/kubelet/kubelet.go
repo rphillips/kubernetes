@@ -833,7 +833,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 
 	klog.InfoS("creating new nodeshutdown manager")
 	// setup node shutdown manager
-	shutdownManager, shutdownAdmitHandler := nodeshutdown.NewManager(klet.GetActivePods, killPodNow(klet.podWorkers, kubeDeps.Recorder), klet.syncNodeStatus, kubeCfg.ShutdownGracePeriod.Duration, kubeCfg.ShutdownGracePeriodCriticalPods.Duration, klet.probeManager)
+	shutdownManager, shutdownAdmitHandler := nodeshutdown.NewManager(klet.GetActivePods, killPodNow(klet.podWorkers, kubeDeps.Recorder), klet.syncNodeStatus, kubeCfg.ShutdownGracePeriod.Duration, kubeCfg.ShutdownGracePeriodCriticalPods.Duration, kubeCfg.PodPriorityShutdownGracePeriods)
 
 	klet.shutdownManager = shutdownManager
 	klet.admitHandlers.AddPodAdmitHandler(shutdownAdmitHandler)
