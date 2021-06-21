@@ -898,7 +898,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DisableCloudProviders:                          {Default: false, PreRelease: featuregate.Alpha},
 	StatefulSetMinReadySeconds:                     {Default: false, PreRelease: featuregate.Alpha},
 	ExpandedDNSConfig:                              {Default: false, PreRelease: featuregate.Alpha},
-	PodPriorityBasedGracefulShutdown:               {Default: false, PreRelease: featuregate.Alpha},
+	PodPriorityBasedGracefulShutdown:               {Default: true, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
