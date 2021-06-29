@@ -36,7 +36,6 @@ import (
 	pkgfeatures "k8s.io/kubernetes/pkg/features"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	"k8s.io/kubernetes/pkg/kubelet/nodeshutdown/systemd"
-	probetest "k8s.io/kubernetes/pkg/kubelet/prober/testing"
 )
 
 type fakeDbus struct {

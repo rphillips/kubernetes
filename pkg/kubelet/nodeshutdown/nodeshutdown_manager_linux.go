@@ -42,6 +42,7 @@ const (
 	nodeShutdownReason          = "Shutdown"
 	nodeShutdownMessage         = "Node is shutting, evicting pods"
 	nodeShutdownNotAdmitMessage = "Node is in progress of shutting down, not admitting any new pods"
+	dbusReconnectPeriod         = 1 * time.Second
 )
 
 var systemDbus = func() (dbusInhibiter, error) {
@@ -75,8 +76,7 @@ type Manager struct {
 	nodeShuttingDownMutex sync.Mutex
 	nodeShuttingDownNow   bool
 
-	clock        clock.Clock
-	probeManager prober.Manager
+	clock clock.Clock
 }
 
 // NewManager returns a new node shutdown manager.
@@ -156,7 +156,7 @@ func (m *Manager) Start() error {
 		}
 
 		if updatedInhibitDelay != periodRequested {
-			return nil, fmt.Errorf("node shutdown manager was unable to update logind InhibitDelayMaxSec to %v (ShutdownGracePeriod), current value of InhibitDelayMaxSec (%v) is less than requested ShutdownGracePeriod", periodRequested, updatedInhibitDelay)
+			return fmt.Errorf("node shutdown manager was unable to update logind InhibitDelayMaxSec to %v (ShutdownGracePeriod), current value of InhibitDelayMaxSec (%v) is less than requested ShutdownGracePeriod", periodRequested, updatedInhibitDelay)
 		}
 	}
 
