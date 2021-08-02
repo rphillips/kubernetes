@@ -52597,6 +52597,13 @@ func schema_k8sio_kubelet_config_v1beta1_KubeletConfiguration(ref common.Referen
 							Format:      "double",
 						},
 					},
+					"evictionMonitoringPeriod": {
+						SchemaProps: spec.SchemaProps{
+							Description: "EvictionMonitoringPeriod interval to check for evictions Default: \"10s\"",
+							Default:     map[string]interface{}{},
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Duration"),
+						},
+					},
 				},
 			},
 		},
