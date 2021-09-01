@@ -50,12 +50,17 @@ type watchEvent struct {
 	eventType podEventType
 }
 
+type fileInfo struct {
+	objKey  string
+	modTime time.Time
+}
+
 type sourceFile struct {
 	path           string
 	nodeName       types.NodeName
 	period         time.Duration
 	store          cache.Store
-	fileKeyMapping map[string]string
+	fileKeyMapping map[string]fileInfo
 	updates        chan<- interface{}
 	watchEvents    chan *watchEvent
 }
@@ -84,7 +89,7 @@ func newSourceFile(path string, nodeName types.NodeName, period time.Duration, u
 		nodeName:       nodeName,
 		period:         period,
 		store:          store,
-		fileKeyMapping: map[string]string{},
+		fileKeyMapping: map[string]fileInfo{},
 		updates:        updates,
 		watchEvents:    make(chan *watchEvent, eventBufferLen),
 	}
@@ -115,8 +120,8 @@ func (s *sourceFile) run() {
 	s.startWatch()
 }
 
-func (s *sourceFile) applyDefaults(pod *api.Pod, source string) error {
-	return applyDefaults(pod, source, true, s.nodeName)
+func (s *sourceFile) applyDefaults(pod *api.Pod, source string, modtime time.Time) error {
+	return applyDefaults(pod, source, true, s.nodeName, modtime)
 }
 
 func (s *sourceFile) listConfig() error {
@@ -200,6 +205,7 @@ func (s *sourceFile) extractFromDir(name string) ([]*v1.Pod, error) {
 // extractFromFile parses a file for Pod configuration information.
 func (s *sourceFile) extractFromFile(filename string) (pod *v1.Pod, err error) {
 	klog.V(3).InfoS("Reading config file", "path", filename)
+	var modtime time.Time
 	defer func() {
 		if err == nil && pod != nil {
 			objKey, keyErr := cache.MetaNamespaceKeyFunc(pod)
@@ -207,7 +213,10 @@ func (s *sourceFile) extractFromFile(filename string) (pod *v1.Pod, err error) {
 				err = keyErr
 				return
 			}
-			s.fileKeyMapping[filename] = objKey
+			s.fileKeyMapping[filename] = fileInfo{
+				objKey:  objKey,
+				modTime: modtime,
+			}
 		}
 	}()
 
@@ -217,13 +226,19 @@ func (s *sourceFile) extractFromFile(filename string) (pod *v1.Pod, err error) {
 	}
 	defer file.Close()
 
+	filestat, err := file.Stat()
+	if err != nil {
+		return pod, err
+	}
+	modtime = filestat.ModTime()
+
 	data, err := utilio.ReadAtMost(file, maxConfigLength)
 	if err != nil {
 		return pod, err
 	}
 
 	defaultFn := func(pod *api.Pod) error {
-		return s.applyDefaults(pod, filename)
+		return s.applyDefaults(pod, filename, modtime)
 	}
 
 	parsed, pod, podErr := tryDecodeSinglePod(data, defaultFn)

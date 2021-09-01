@@ -135,12 +135,12 @@ func (s *sourceFile) consumeWatchEvent(e *watchEvent) error {
 		}
 		return s.store.Add(pod)
 	case podDelete:
-		if objKey, keyExist := s.fileKeyMapping[e.fileName]; keyExist {
-			pod, podExist, err := s.store.GetByKey(objKey)
+		if fileInfo, keyExist := s.fileKeyMapping[e.fileName]; keyExist {
+			pod, podExist, err := s.store.GetByKey(fileInfo.objKey)
 			if err != nil {
 				return err
 			} else if !podExist {
-				return fmt.Errorf("the pod with key %s doesn't exist in cache", objKey)
+				return fmt.Errorf("the pod with key %s doesn't exist in cache", fileInfo.objKey)
 			} else {
 				if err = s.store.Delete(pod); err != nil {
 					return fmt.Errorf("failed to remove deleted pod from cache: %v", err)
