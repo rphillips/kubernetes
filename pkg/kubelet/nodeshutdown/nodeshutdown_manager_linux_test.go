@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 /*
@@ -35,6 +36,7 @@ import (
 	"k8s.io/kubernetes/pkg/apis/scheduling"
 	pkgfeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/nodeshutdown/systemd"
+	probetest "k8s.io/kubernetes/pkg/kubelet/prober/testing"
 )
 
 type fakeDbus struct {
@@ -229,7 +231,8 @@ func TestManager(t *testing.T) {
 			}
 			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, pkgfeatures.GracefulNodeShutdown, true)()
 
-			manager, _ := NewManager(activePodsFunc, killPodsFunc, func() {}, tc.shutdownGracePeriodRequested, tc.shutdownGracePeriodCriticalPods)
+			proberManager := probetest.FakeManager{}
+			manager, _ := NewManager(proberManager, activePodsFunc, killPodsFunc, func() {}, tc.shutdownGracePeriodRequested, tc.shutdownGracePeriodCriticalPods)
 			manager.clock = clock.NewFakeClock(time.Now())
 
 			err := manager.Start()
@@ -303,7 +306,8 @@ func TestFeatureEnabled(t *testing.T) {
 			}
 			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, pkgfeatures.GracefulNodeShutdown, tc.featureGateEnabled)()
 
-			manager, _ := NewManager(activePodsFunc, killPodsFunc, func() {}, tc.shutdownGracePeriodRequested, 0 /*shutdownGracePeriodCriticalPods*/)
+			proberManager := probetest.FakeManager{}
+			manager, _ := NewManager(proberManager, activePodsFunc, killPodsFunc, func() {}, tc.shutdownGracePeriodRequested, 0 /*shutdownGracePeriodCriticalPods*/)
 			manager.clock = clock.NewFakeClock(time.Now())
 
 			assert.Equal(t, tc.expectEnabled, manager.isFeatureEnabled())
@@ -345,7 +349,8 @@ func TestRestart(t *testing.T) {
 		return dbus, nil
 	}
 
-	manager, _ := NewManager(activePodsFunc, killPodsFunc, syncNodeStatus, shutdownGracePeriodRequested, shutdownGracePeriodCriticalPods)
+	proberManager := probetest.FakeManager{}
+	manager, _ := NewManager(proberManager, activePodsFunc, killPodsFunc, syncNodeStatus, shutdownGracePeriodRequested, shutdownGracePeriodCriticalPods)
 	err := manager.Start()
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
