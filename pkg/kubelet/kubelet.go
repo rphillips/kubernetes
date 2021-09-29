@@ -1774,6 +1774,14 @@ func (kl *Kubelet) syncTerminatingPod(ctx context.Context, pod *v1.Pod, podStatu
 	klog.V(4).InfoS("syncTerminatingPod enter", "pod", klog.KObj(pod), "podUID", pod.UID)
 	defer klog.V(4).InfoS("syncTerminatingPod exit", "pod", klog.KObj(pod), "podUID", pod.UID)
 
+	// On eviction, runningPod will be != nil in certain cases. Make sure
+	// to update the API first, since the next if block (if entered) will
+	// return early.
+	apiPodStatus := kl.generateAPIPodStatus(pod, podStatus)
+	if podStatusFn != nil {
+		podStatusFn(&apiPodStatus)
+	}
+
 	// when we receive a runtime only pod (runningPod != nil) we don't need to update the status
 	// manager or refresh the status of the cache, because a successful killPod will ensure we do
 	// not get invoked again
@@ -1794,10 +1802,6 @@ func (kl *Kubelet) syncTerminatingPod(ctx context.Context, pod *v1.Pod, podStatu
 		return nil
 	}
 
-	apiPodStatus := kl.generateAPIPodStatus(pod, podStatus)
-	if podStatusFn != nil {
-		podStatusFn(&apiPodStatus)
-	}
 	kl.statusManager.SetPodStatus(pod, apiPodStatus)
 
 	if gracePeriod != nil {
