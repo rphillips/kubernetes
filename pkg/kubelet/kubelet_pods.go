@@ -1784,7 +1784,7 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 		}
 
 		// If the pod was not deleted, then it's been restarted. Increment restart count.
-		if pod.DeletionTimestamp == nil {
+		if !isTerminated {
 			status.RestartCount += 1
 		}
 

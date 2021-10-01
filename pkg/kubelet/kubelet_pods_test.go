@@ -2479,6 +2479,7 @@ func TestConvertToAPIContainerStatuses(t *testing.T) {
 			containers: desiredState.Containers,
 			// no init containers
 			// is not an init container
+			isTerminated: true,
 			expected: []v1.ContainerStatus{
 				waitingWithLastTerminationUnknown("containerA", 0),
 				waitingWithLastTerminationUnknown("containerB", 0),
@@ -2547,6 +2548,7 @@ func Test_generateAPIPodStatus(t *testing.T) {
 		currentStatus    *kubecontainer.PodStatus
 		unreadyContainer []string
 		previousStatus   v1.PodStatus
+		isTerminated     bool
 		expected         v1.PodStatus
 	}{
 		{
@@ -2568,6 +2570,7 @@ func Test_generateAPIPodStatus(t *testing.T) {
 					runningState("containerB"),
 				},
 			},
+			isTerminated: true,
 			expected: v1.PodStatus{
 				Phase:    v1.PodRunning,
 				HostIP:   "127.0.0.1",
@@ -2637,6 +2640,7 @@ func Test_generateAPIPodStatus(t *testing.T) {
 					runningState("containerB"),
 				},
 			},
+			isTerminated: true,
 			expected: v1.PodStatus{
 				Phase:    v1.PodSucceeded,
 				HostIP:   "127.0.0.1",
@@ -2648,8 +2652,8 @@ func Test_generateAPIPodStatus(t *testing.T) {
 					{Type: v1.PodScheduled, Status: v1.ConditionTrue},
 				},
 				ContainerStatuses: []v1.ContainerStatus{
-					ready(waitingWithLastTerminationUnknown("containerA", 1)),
-					ready(waitingWithLastTerminationUnknown("containerB", 1)),
+					ready(waitingWithLastTerminationUnknown("containerA", 0)),
+					ready(waitingWithLastTerminationUnknown("containerB", 0)),
 				},
 			},
 		},
@@ -2800,7 +2804,7 @@ func Test_generateAPIPodStatus(t *testing.T) {
 			for _, name := range test.unreadyContainer {
 				kl.readinessManager.Set(kubecontainer.BuildContainerID("", findContainerStatusByName(test.expected, name).ContainerID), results.Failure, test.pod)
 			}
-			actual := kl.generateAPIPodStatus(test.pod, test.currentStatus, false)
+			actual := kl.generateAPIPodStatus(test.pod, test.currentStatus, test.isTerminated)
 			if !apiequality.Semantic.DeepEqual(test.expected, actual) {
 				t.Fatalf("Unexpected status: %s", diff.ObjectReflectDiff(actual, test.expected))
 			}
