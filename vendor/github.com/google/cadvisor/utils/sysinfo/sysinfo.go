@@ -96,56 +96,7 @@ func GetBlockDeviceInfo(sysfs sysfs.SysFs) (map[string]info.DiskInfo, error) {
 
 // Get information about network devices present on the system.
 func GetNetworkDevices(sysfs sysfs.SysFs) ([]info.NetInfo, error) {
-	devs, err := sysfs.GetNetworkDevices()
-	if err != nil {
-		return nil, err
-	}
-	netDevices := []info.NetInfo{}
-	for _, dev := range devs {
-		name := dev.Name()
-		// Ignore docker, loopback, and veth devices.
-		ignoredDevices := []string{"lo", "veth", "docker"}
-		ignored := false
-		for _, prefix := range ignoredDevices {
-			if strings.HasPrefix(name, prefix) {
-				ignored = true
-				break
-			}
-		}
-		if ignored {
-			continue
-		}
-		address, err := sysfs.GetNetworkAddress(name)
-		if err != nil {
-			return nil, err
-		}
-		mtuStr, err := sysfs.GetNetworkMtu(name)
-		if err != nil {
-			return nil, err
-		}
-		var mtu int64
-		n, err := fmt.Sscanf(mtuStr, "%d", &mtu)
-		if err != nil || n != 1 {
-			return nil, fmt.Errorf("could not parse mtu from %s for device %s", mtuStr, name)
-		}
-		netInfo := info.NetInfo{
-			Name:       name,
-			MacAddress: strings.TrimSpace(address),
-			Mtu:        mtu,
-		}
-		speed, err := sysfs.GetNetworkSpeed(name)
-		// Some devices don't set speed.
-		if err == nil {
-			var s int64
-			n, err := fmt.Sscanf(speed, "%d", &s)
-			if err != nil || n != 1 {
-				return nil, fmt.Errorf("could not parse speed from %s for device %s", speed, name)
-			}
-			netInfo.Speed = s
-		}
-		netDevices = append(netDevices, netInfo)
-	}
-	return netDevices, nil
+	return []info.NetInfo{}, nil
 }
 
 // GetHugePagesInfo returns information about pre-allocated huge pages
