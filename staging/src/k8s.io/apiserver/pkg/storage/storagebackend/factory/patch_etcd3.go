@@ -8,6 +8,7 @@ import (
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 )
@@ -24,14 +25,38 @@ func newETCD3Check(c storagebackend.Config, timeout time.Duration, stopCh <-chan
 
 	go wait.PollUntil(time.Second, func() (bool, error) {
 		client, err := newETCD3Client(c.Transport)
+
+		// Ensure that server is already not shutting down.
+		select {
+		case <-stopCh:
+			if err == nil {
+				client.Close()
+			}
+			return true, nil
+		default:
+		}
+
 		if err != nil {
 			clientErrMsg.Store(err.Error())
 			return false, nil
 		}
+
 		clientValue.Store(client)
 		clientErrMsg.Store("")
 		return true, nil
-	}, wait.NeverStop)
+	}, stopCh)
+
+	// Close the client on shutdown.
+	go func() {
+		defer utilruntime.HandleCrash()
+		<-stopCh
+
+		client := clientValue.Load().(*clientv3.Client)
+		if client != nil {
+			client.Close()
+			clientErrMsg.Store("server is shutting down")
+		}
+	}()
 
 	healthzErrorMessage := &atomic.Value{}
 	healthzErrorMessage.Store("etcd client connection not yet established")
@@ -50,7 +75,7 @@ func newETCD3Check(c storagebackend.Config, timeout time.Duration, stopCh <-chan
 			return
 		}
 		healthzErrorMessage.Store(err.Error())
-	}, time.Second, wait.NeverStop)
+	}, time.Second, stopCh)
 
 	return func() error {
 		if errMsg := healthzErrorMessage.Load().(string); len(errMsg) > 0 {
