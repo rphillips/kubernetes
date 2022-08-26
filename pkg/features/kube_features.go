@@ -533,7 +533,7 @@ const (
 
 	// owner: @RobertKrawitz
 	// alpha: v1.15
-	// beta: v1.25
+	// beta: v1.24
 	//
 	// Allow use of filesystems for ephemeral storage monitoring.
 	// Only applies if LocalStorageCapacityIsolation is set.
