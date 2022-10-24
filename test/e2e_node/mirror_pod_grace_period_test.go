@@ -131,6 +131,26 @@ var _ = SIGDescribe("MirrorPodWithGracePeriod", func() {
 			framework.ExpectEqual(pod.Spec.Containers[0].Image, image)
 		})
 
+		ginkgo.It("should terminate a static pod when the container runtime is temporarily down [NodeConformance] [Serial]", func() {
+			ginkgo.By("delete the static pod")
+			err := deleteStaticPod(podPath, staticPodName, ns)
+			framework.ExpectNoError(err)
+
+			ginkgo.By("sleeping before stopping the container runtime")
+			time.Sleep(2 * time.Second)
+
+			ginkgo.By("stop the container runtime")
+			err = stopContainerRuntime()
+			framework.ExpectNoError(err, "expected no error stopping the container runtime")
+
+			ginkgo.By("sleeping before starting container runtime")
+			time.Sleep(30 * time.Second)
+
+			ginkgo.By("start the container runtime")
+			err = startContainerRuntime()
+			framework.ExpectNoError(err, "expected no error starting the container runtime")
+		})
+
 		ginkgo.AfterEach(func() {
 			ginkgo.By("delete the static pod")
 			err := deleteStaticPod(podPath, staticPodName, ns)

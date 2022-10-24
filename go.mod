@@ -25,7 +25,7 @@ require (
 	github.com/container-storage-interface/spec v1.6.0
 	github.com/coredns/corefile-migration v1.0.17
 	github.com/coreos/go-oidc v2.1.0+incompatible
-	github.com/coreos/go-systemd/v22 v22.3.2
+	github.com/coreos/go-systemd/v22 v22.4.0
 	github.com/cpuguy83/go-md2man/v2 v2.0.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.8.1+incompatible
@@ -338,7 +338,7 @@ replace (
 	github.com/coredns/corefile-migration => github.com/coredns/corefile-migration v1.0.17
 	github.com/coreos/go-oidc => github.com/coreos/go-oidc v2.1.0+incompatible
 	github.com/coreos/go-semver => github.com/coreos/go-semver v0.3.0
-	github.com/coreos/go-systemd/v22 => github.com/coreos/go-systemd/v22 v22.3.2
+	github.com/coreos/go-systemd/v22 => github.com/coreos/go-systemd/v22 v22.4.0
 	github.com/cpuguy83/go-md2man/v2 => github.com/cpuguy83/go-md2man/v2 v2.0.1
 	github.com/creack/pty => github.com/creack/pty v1.1.11
 	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.2.3
