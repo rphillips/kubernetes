@@ -32,6 +32,7 @@ import (
 	"k8s.io/kubernetes/openshift-kube-apiserver/admission/authorization/restrictusers/usercache"
 	"k8s.io/kubernetes/openshift-kube-apiserver/admission/autoscaling/managementcpusoverride"
 	"k8s.io/kubernetes/openshift-kube-apiserver/admission/scheduler/nodeenv"
+	"k8s.io/kubernetes/openshift-kube-apiserver/admission/scheduler/spcmutate"
 	"k8s.io/kubernetes/openshift-kube-apiserver/enablement"
 	"k8s.io/kubernetes/openshift-kube-apiserver/filters/deprecatedapirequest"
 	"k8s.io/kubernetes/pkg/quota/v1/install"
@@ -75,6 +76,7 @@ func OpenShiftKubeAPIServerConfigPatch(genericConfig *genericapiserver.Config, k
 			generic.NewRegistry(install.NewQuotaConfigurationForAdmission().Evaluators()),
 		),
 		nodeenv.NewInitializer(enablement.OpenshiftConfig().ProjectConfig.DefaultNodeSelector),
+		spcmutate.NewInitializer(),
 		admissionrestconfig.NewInitializer(*rest.CopyConfig(genericConfig.LoopbackClientConfig)),
 		managementcpusoverride.NewInitializer(openshiftInformers.getOpenshiftInfraInformers().Config().V1().Infrastructures()),
 	)
