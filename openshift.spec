@@ -107,6 +107,7 @@ KUBE_BUILD_PLATFORMS="${BUILD_PLATFORM}" %{os_git_vars} make all WHAT='cmd/kube-
 
 PLATFORM="$(go env GOHOSTOS)/$(go env GOHOSTARCH)"
 install -d %{buildroot}%{_bindir}
+install -d %{buildroot}%{_sysctldir}
 
 # Install linux components
 for bin in kube-apiserver kube-controller-manager kube-scheduler kubelet
@@ -116,6 +117,10 @@ do
 done
 
 install -p -m 755 openshift-hack/images/hyperkube/hyperkube %{buildroot}%{_bindir}/hyperkube
+install -p -m 755 openshift-hack/sysctls/50-kubelet.conf %{buildroot}%{_sysctldir}/50-kubelet.conf
+
+%post
+%sysctl_apply 50-kubelet.conf
 
 %files hyperkube
 %license LICENSE
@@ -124,6 +129,7 @@ install -p -m 755 openshift-hack/images/hyperkube/hyperkube %{buildroot}%{_bindi
 %{_bindir}/kube-controller-manager
 %{_bindir}/kube-scheduler
 %{_bindir}/kubelet
+%{_sysctldir}/50-kubelet.conf
 %defattr(-,root,root,0700)
 
 %changelog
