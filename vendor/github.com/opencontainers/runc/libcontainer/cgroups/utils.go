@@ -162,8 +162,10 @@ func readProcsFile(dir string) ([]int, error) {
 
 // ParseCgroupFile parses the given cgroup file, typically /proc/self/cgroup
 // or /proc/<pid>/cgroup, into a map of subsystems to cgroup paths, e.g.
-//   "cpu": "/user.slice/user-1000.slice"
-//   "pids": "/user.slice/user-1000.slice"
+//
+//	"cpu": "/user.slice/user-1000.slice"
+//	"pids": "/user.slice/user-1000.slice"
+//
 // etc.
 //
 // Note that for cgroup v2 unified hierarchy, there are no per-controller
@@ -269,7 +271,7 @@ func RemovePath(path string) error {
 // returned.
 func RemovePaths(paths map[string]string) (err error) {
 	const retries = 5
-	delay := 10 * time.Millisecond
+	delay := 500 * time.Millisecond
 	for i := 0; i < retries; i++ {
 		if i != 0 {
 			time.Sleep(delay)
