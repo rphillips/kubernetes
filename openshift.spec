@@ -100,7 +100,7 @@ Obsoletes:      atomic-openshift-node <= %{version}
 %ifarch s390x
   BUILD_PLATFORM="linux/s390x"
 %endif
-KUBE_BUILD_PLATFORMS="${BUILD_PLATFORM}" %{os_git_vars} make all WHAT='cmd/kube-apiserver cmd/kube-controller-manager cmd/kube-scheduler cmd/kubelet'
+FORCE_HOST_GO=y KUBE_BUILD_PLATFORMS="${BUILD_PLATFORM}" %{os_git_vars} make all KUBE_CGO_OVERRIDES='cmd/kube-apiserver cmd/kube-controller-manager cmd/kube-scheduler cmd/kubelet' WHAT='cmd/kube-apiserver cmd/kube-controller-manager cmd/kube-scheduler cmd/kubelet'
 %endif
 
 %install
