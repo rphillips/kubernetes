@@ -118,7 +118,7 @@ func TestManager(t *testing.T) {
 	longGracePeriod := int64(1000)
 	normalPodLongGracePeriod := makePod("normal-pod-long-grace-period", scheduling.DefaultPriorityWhenNoDefaultClassExists, &longGracePeriod /* terminationGracePeriod */)
 
-	var tests = []struct {
+	tests := []struct {
 		desc                             string
 		activePods                       []*v1.Pod
 		shutdownGracePeriodRequested     time.Duration
@@ -162,7 +162,7 @@ func TestManager(t *testing.T) {
 			overrideSystemInhibitDelay:       time.Duration(40 * time.Second),
 			enablePodDisruptionConditions:    true,
 			expectedDidOverrideInhibitDelay:  false,
-			expectedPodToGracePeriodOverride: map[string]int64{"running-pod": 20, "failed-pod": 20, "succeeded-pod": 20},
+			expectedPodToGracePeriodOverride: map[string]int64{"running-pod": 30, "failed-pod": 30, "succeeded-pod": 30},
 			expectedPodStatuses: map[string]v1.PodStatus{
 				"running-pod": {
 					Phase:   v1.PodFailed,
@@ -214,7 +214,7 @@ func TestManager(t *testing.T) {
 			overrideSystemInhibitDelay:       time.Duration(40 * time.Second),
 			enablePodDisruptionConditions:    false,
 			expectedDidOverrideInhibitDelay:  false,
-			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 20, "critical-pod-nil-grace-period": 10},
+			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 30, "critical-pod-nil-grace-period": 30},
 			expectedPodStatuses: map[string]v1.PodStatus{
 				"normal-pod-nil-grace-period": {
 					Phase:   v1.PodFailed,
@@ -236,7 +236,7 @@ func TestManager(t *testing.T) {
 			systemInhibitDelay:               time.Duration(40 * time.Second),
 			overrideSystemInhibitDelay:       time.Duration(40 * time.Second),
 			expectedDidOverrideInhibitDelay:  false,
-			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 20, "critical-pod-nil-grace-period": 10, "normal-pod-grace-period": 2, "critical-pod-grace-period": 2},
+			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 30, "critical-pod-nil-grace-period": 30, "normal-pod-grace-period": 2, "critical-pod-grace-period": 2},
 		},
 		{
 			desc:                             "no override (total=30s, critical=10s) pod with long terminationGracePeriod is overridden",
@@ -246,7 +246,7 @@ func TestManager(t *testing.T) {
 			systemInhibitDelay:               time.Duration(40 * time.Second),
 			overrideSystemInhibitDelay:       time.Duration(40 * time.Second),
 			expectedDidOverrideInhibitDelay:  false,
-			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 20, "critical-pod-nil-grace-period": 10, "normal-pod-grace-period": 2, "critical-pod-grace-period": 2, "normal-pod-long-grace-period": 20},
+			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 30, "critical-pod-nil-grace-period": 30, "normal-pod-grace-period": 2, "critical-pod-grace-period": 2, "normal-pod-long-grace-period": 20},
 		},
 		{
 			desc:                             "no override (total=30, critical=0)",
@@ -256,7 +256,7 @@ func TestManager(t *testing.T) {
 			systemInhibitDelay:               time.Duration(40 * time.Second),
 			overrideSystemInhibitDelay:       time.Duration(40 * time.Second),
 			expectedDidOverrideInhibitDelay:  false,
-			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 30, "critical-pod-nil-grace-period": 0},
+			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 30, "critical-pod-nil-grace-period": 30},
 		},
 		{
 			desc:                             "override successful (total=30, critical=10)",
@@ -266,7 +266,7 @@ func TestManager(t *testing.T) {
 			systemInhibitDelay:               time.Duration(5 * time.Second),
 			overrideSystemInhibitDelay:       time.Duration(30 * time.Second),
 			expectedDidOverrideInhibitDelay:  true,
-			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 20, "critical-pod-nil-grace-period": 10},
+			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 30, "critical-pod-nil-grace-period": 30},
 		},
 		{
 			desc:                             "override unsuccessful",
@@ -296,7 +296,7 @@ func TestManager(t *testing.T) {
 			systemInhibitDelay:               time.Duration(5 * time.Second),
 			overrideSystemInhibitDelay:       time.Duration(5 * time.Second),
 			expectedDidOverrideInhibitDelay:  false,
-			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 0, "critical-pod-nil-grace-period": 5},
+			expectedPodToGracePeriodOverride: map[string]int64{"normal-pod-nil-grace-period": 30, "critical-pod-nil-grace-period": 30},
 		},
 	}
 
@@ -402,7 +402,7 @@ func TestManager(t *testing.T) {
 }
 
 func TestFeatureEnabled(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		desc                         string
 		shutdownGracePeriodRequested time.Duration
 		featureGateEnabled           bool
@@ -480,7 +480,7 @@ func TestRestart(t *testing.T) {
 
 	var shutdownChan chan bool
 	var shutdownChanMut sync.Mutex
-	var connChan = make(chan struct{}, 1)
+	connChan := make(chan struct{}, 1)
 
 	lock.Lock()
 	systemDbus = func() (dbusInhibiter, error) {

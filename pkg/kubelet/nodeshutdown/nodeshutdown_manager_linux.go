@@ -53,6 +53,8 @@ const (
 	localStorageStateFile          = "graceful_node_shutdown_state"
 )
 
+var podDefaultTerminationPeriod int64 = 30
+
 var systemDbus = func() (dbusInhibiter, error) {
 	return systemd.NewDBusCon()
 }
@@ -365,14 +367,18 @@ func (m *managerImpl) processShutdownEvent() error {
 			go func(pod *v1.Pod, group podShutdownGroup) {
 				defer wg.Done()
 
-				gracePeriodOverride := group.ShutdownGracePeriodSeconds
+				gracePeriodOverride := podDefaultTerminationPeriod
 
-				// If the pod's spec specifies a termination gracePeriod which is less than the gracePeriodOverride calculated, use the pod spec termination gracePeriod.
-				if pod.Spec.TerminationGracePeriodSeconds != nil && *pod.Spec.TerminationGracePeriodSeconds <= gracePeriodOverride {
-					gracePeriodOverride = *pod.Spec.TerminationGracePeriodSeconds
+				// If the pod's spec specifies a termination gracePeriod then use that grace period
+				if pod.Spec.TerminationGracePeriodSeconds != nil {
+					if *pod.Spec.TerminationGracePeriodSeconds > group.ShutdownGracePeriodSeconds {
+						gracePeriodOverride = group.ShutdownGracePeriodSeconds
+					} else {
+						gracePeriodOverride = *pod.Spec.TerminationGracePeriodSeconds
+					}
 				}
 
-				m.logger.V(1).Info("Shutdown manager killing pod with gracePeriod", "pod", klog.KObj(pod), "gracePeriod", gracePeriodOverride)
+				m.logger.V(1).Info("Shutdown manager killing pod with gracePeriod", "pod", klog.KObj(pod), "gracePeriod", gracePeriodOverride, "priority", group.Priority)
 
 				if err := m.killPodFunc(pod, false, &gracePeriodOverride, func(status *v1.PodStatus) {
 					// set the pod status to failed (unless it was already in a successful terminal phase)
@@ -392,7 +398,7 @@ func (m *managerImpl) processShutdownEvent() error {
 				}); err != nil {
 					m.logger.V(1).Info("Shutdown manager failed killing pod", "pod", klog.KObj(pod), "err", err)
 				} else {
-					m.logger.V(1).Info("Shutdown manager finished killing pod", "pod", klog.KObj(pod))
+					m.logger.V(1).Info("Shutdown manager finished killing pod", "pod", klog.KObj(pod), "gracePeriod", gracePeriodOverride, "priority", group.Priority)
 				}
 			}(pod, group)
 		}
