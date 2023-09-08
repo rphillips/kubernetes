@@ -234,17 +234,28 @@ func (rc *reconciler) reconstructVolume(volume podVolume) (rvolume *reconstructe
 	// Searching by spec checks whether the volume is actually attachable
 	// (i.e. has a PV) whereas searching by plugin name can only tell whether
 	// the plugin supports attachable volumes.
-	attachablePlugin, err := rc.volumePluginMgr.FindAttachablePluginBySpec(volumeSpec)
-	if err != nil {
-		return nil, err
-	}
 	deviceMountablePlugin, err := rc.volumePluginMgr.FindDeviceMountablePluginBySpec(volumeSpec)
 	if err != nil {
 		return nil, err
 	}
 
+	// The unique volume name used depends on whether the volume is attachable/device-mountable
+	// (needsNameFromSpec = true) or not.
+	needsNameFromSpec := deviceMountablePlugin != nil
+	if !needsNameFromSpec {
+		// Check attach-ability of a volume only as a fallback to avoid calling
+		// FindAttachablePluginBySpec for CSI volumes - it needs a connection to the API server,
+		// but it may not be available at this stage of kubelet startup.
+		// All CSI volumes are device-mountable, so they won't reach this code.
+		attachablePlugin, err := rc.volumePluginMgr.FindAttachablePluginBySpec(volumeSpec)
+		if err != nil {
+			return nil, err
+		}
+		needsNameFromSpec = attachablePlugin != nil
+	}
+
 	var uniqueVolumeName v1.UniqueVolumeName
-	if attachablePlugin != nil || deviceMountablePlugin != nil {
+	if needsNameFromSpec {
 		uniqueVolumeName, err = util.GetUniqueVolumeNameFromSpec(plugin, volumeSpec)
 		if err != nil {
 			return nil, err
@@ -256,8 +267,6 @@ func (rc *reconciler) reconstructVolume(volume podVolume) (rvolume *reconstructe
 	var volumeMapper volumepkg.BlockVolumeMapper
 	var volumeMounter volumepkg.Mounter
 	var deviceMounter volumepkg.DeviceMounter
-	// Path to the mount or block device to check
-	var checkPath string
 
 	if volume.volumeMode == v1.PersistentVolumeBlock {
 		var newMapperErr error
@@ -274,8 +283,6 @@ func (rc *reconciler) reconstructVolume(volume podVolume) (rvolume *reconstructe
 				pod.UID,
 				newMapperErr)
 		}
-		mapDir, linkName := volumeMapper.GetPodDeviceMapPath()
-		checkPath = filepath.Join(mapDir, linkName)
 	} else {
 		var err error
 		volumeMounter, err = plugin.NewMounter(
@@ -291,7 +298,6 @@ func (rc *reconciler) reconstructVolume(volume podVolume) (rvolume *reconstructe
 				pod.UID,
 				err)
 		}
-		checkPath = volumeMounter.GetPath()
 		if deviceMountablePlugin != nil {
 			deviceMounter, err = deviceMountablePlugin.NewDeviceMounter()
 			if err != nil {
@@ -303,16 +309,6 @@ func (rc *reconciler) reconstructVolume(volume podVolume) (rvolume *reconstructe
 					err)
 			}
 		}
-	}
-
-	// Check existence of mount point for filesystem volume or symbolic link for block volume
-	isExist, checkErr := rc.operationExecutor.CheckVolumeExistenceOperation(volumeSpec, checkPath, volumeSpec.Name(), rc.mounter, uniqueVolumeName, volume.podName, pod.UID, attachablePlugin)
-	if checkErr != nil {
-		return nil, checkErr
-	}
-	// If mount or symlink doesn't exist, volume reconstruction should be failed
-	if !isExist {
-		return nil, fmt.Errorf("volume: %q is not mounted", uniqueVolumeName)
 	}
 
 	reconstructedVolume := &reconstructedVolume{
