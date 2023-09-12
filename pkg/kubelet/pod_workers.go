@@ -269,10 +269,12 @@ type podSyncer interface {
 	SyncTerminatedPod(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus) error
 }
 
-type syncPodFnType func(ctx context.Context, updateType kubetypes.SyncPodType, pod *v1.Pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error)
-type syncTerminatingPodFnType func(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus, gracePeriod *int64, podStatusFn func(*v1.PodStatus)) error
-type syncTerminatingRuntimePodFnType func(ctx context.Context, runningPod *kubecontainer.Pod) error
-type syncTerminatedPodFnType func(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus) error
+type (
+	syncPodFnType                   func(ctx context.Context, updateType kubetypes.SyncPodType, pod *v1.Pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error)
+	syncTerminatingPodFnType        func(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus, gracePeriod *int64, podStatusFn func(*v1.PodStatus)) error
+	syncTerminatingRuntimePodFnType func(ctx context.Context, runningPod *kubecontainer.Pod) error
+	syncTerminatedPodFnType         func(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus) error
+)
 
 // podSyncerFuncs implements podSyncer and accepts functions for each method.
 type podSyncerFuncs struct {
@@ -296,12 +298,15 @@ var _ podSyncer = podSyncerFuncs{}
 func (f podSyncerFuncs) SyncPod(ctx context.Context, updateType kubetypes.SyncPodType, pod *v1.Pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
 	return f.syncPod(ctx, updateType, pod, mirrorPod, podStatus)
 }
+
 func (f podSyncerFuncs) SyncTerminatingPod(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus, gracePeriod *int64, podStatusFn func(*v1.PodStatus)) error {
 	return f.syncTerminatingPod(ctx, pod, podStatus, gracePeriod, podStatusFn)
 }
+
 func (f podSyncerFuncs) SyncTerminatingRuntimePod(ctx context.Context, runningPod *kubecontainer.Pod) error {
 	return f.syncTerminatingRuntimePod(ctx, runningPod)
 }
+
 func (f podSyncerFuncs) SyncTerminatedPod(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus) error {
 	return f.syncTerminatedPod(ctx, pod, podStatus)
 }
@@ -767,7 +772,7 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 	now := p.clock.Now()
 	status, ok := p.podSyncStatuses[uid]
 	if !ok {
-		klog.V(4).InfoS("Pod is being synced for the first time", "pod", klog.KRef(ns, name), "podUID", uid, "updateType", options.UpdateType)
+		klog.V(1).InfoS("Pod is being synced for the first time", "pod", klog.KRef(ns, name), "podUID", uid, "updateType", options.UpdateType)
 		firstTime = true
 		status = &podSyncStatus{
 			syncedAt: now,
@@ -775,10 +780,12 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 		}
 		// if this pod is being synced for the first time, we need to make sure it is an active pod
 		if options.Pod != nil && (options.Pod.Status.Phase == v1.PodFailed || options.Pod.Status.Phase == v1.PodSucceeded) {
+			klog.V(1).Infof("rphillips: 1: %+v", options.Pod)
 			// Check to see if the pod is not running and the pod is terminal; if this succeeds then record in the podWorker that it is terminated.
 			// This is needed because after a kubelet restart, we need to ensure terminal pods will NOT be considered active in Pod Admission. See http://issues.k8s.io/105523
 			// However, `filterOutInactivePods`, considers pods that are actively terminating as active. As a result, `IsPodKnownTerminated()` needs to return true and thus `terminatedAt` needs to be set.
 			if statusCache, err := p.podCache.Get(uid); err == nil {
+				klog.V(1).Infof("rphillips: podCache success: %+v is_terminal=%v", statusCache, isPodStatusCacheTerminal(statusCache))
 				if isPodStatusCacheTerminal(statusCache) {
 					// At this point we know:
 					// (1) The pod is terminal based on the config source.
@@ -799,6 +806,8 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 		}
 		p.podSyncStatuses[uid] = status
 	}
+
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
 
 	// RunningPods represent an unknown pod execution and don't contain pod spec information
 	// sufficient to perform any action other than termination. If we received a RunningPod
@@ -824,6 +833,8 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 		}
 	}
 
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
+
 	// When we see a create update on an already terminating pod, that implies two pods with the same UID were created in
 	// close temporal proximity (usually static pod but it's possible for an apiserver to extremely rarely do something
 	// similar) - flag the sync status to indicate that after the pod terminates it should be reset to "not running" to
@@ -837,11 +848,15 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 		}
 	}
 
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
+
 	// once a pod is terminated by UID, it cannot reenter the pod worker (until the UID is purged by housekeeping)
 	if status.IsFinished() {
 		klog.V(4).InfoS("Pod is finished processing, no further updates", "pod", klog.KRef(ns, name), "podUID", uid, "updateType", options.UpdateType)
 		return
 	}
+
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
 
 	// check for a transition to terminating
 	var becameTerminating bool
@@ -872,6 +887,8 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 			becameTerminating = true
 		}
 	}
+
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
 
 	// once a pod is terminating, all updates are kills and the grace period can only decrease
 	var wasGracePeriodShortened bool
@@ -922,6 +939,8 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 		}
 	}
 
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
+
 	// start the pod worker goroutine if it doesn't exist
 	podUpdates, exists := p.podUpdates[uid]
 	if !exists {
@@ -931,8 +950,7 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 
 		// ensure that static pods start in the order they are received by UpdatePod
 		if kubetypes.IsStaticPod(pod) {
-			p.waitingToStartStaticPodsByFullname[status.fullname] =
-				append(p.waitingToStartStaticPodsByFullname[status.fullname], uid)
+			p.waitingToStartStaticPodsByFullname[status.fullname] = append(p.waitingToStartStaticPodsByFullname[status.fullname], uid)
 		}
 
 		// allow testing of delays in the pod update channel
@@ -953,11 +971,15 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 		}()
 	}
 
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
+
 	// measure the maximum latency between a call to UpdatePod and when the pod worker reacts to it
 	// by preserving the oldest StartTime
 	if status.pendingUpdate != nil && !status.pendingUpdate.StartTime.IsZero() && status.pendingUpdate.StartTime.Before(options.StartTime) {
 		options.StartTime = status.pendingUpdate.StartTime
 	}
+
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
 
 	// notify the pod worker there is a pending update
 	status.pendingUpdate = &options
@@ -967,6 +989,8 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 	case podUpdates <- struct{}{}:
 	default:
 	}
+
+	klog.V(1).InfoS("rphillips", "pod", klog.KRef(ns, name), "podUID", uid, "status", status.WorkType())
 
 	if (becameTerminating || wasGracePeriodShortened) && status.cancelFn != nil {
 		klog.V(3).InfoS("Cancelling current pod sync", "pod", klog.KRef(ns, name), "podUID", uid, "workType", status.WorkType())
