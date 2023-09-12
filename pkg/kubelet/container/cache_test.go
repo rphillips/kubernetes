@@ -144,7 +144,7 @@ func TestCacheSetAndGet(t *testing.T) {
 		cache.Set(podID, status, c.error, time.Time{})
 		// Read back the status and error stored in cache and make sure they
 		// match the original ones.
-		actualStatus, actualErr := cache.Get(podID)
+		actualStatus, _, actualErr := cache.Get(podID)
 		assert.Equal(t, status, actualStatus, "test[%d]", i)
 		assert.Equal(t, c.error, actualErr, "test[%d]", i)
 	}
@@ -155,7 +155,7 @@ func TestCacheGetPodDoesNotExist(t *testing.T) {
 	podID, status := getTestPodIDAndStatus(0)
 	// If the pod does not exist in cache, cache should return an status
 	// object with id filled.
-	actualStatus, actualErr := cache.Get(podID)
+	actualStatus, _, actualErr := cache.Get(podID)
 	assert.Equal(t, status, actualStatus)
 	assert.Equal(t, nil, actualErr)
 }
@@ -165,13 +165,13 @@ func TestDelete(t *testing.T) {
 	// Write a new pod status into the cache.
 	podID, status := getTestPodIDAndStatus(3)
 	cache.Set(podID, status, nil, time.Time{})
-	actualStatus, actualErr := cache.Get(podID)
+	actualStatus, _, actualErr := cache.Get(podID)
 	assert.Equal(t, status, actualStatus)
 	assert.Equal(t, nil, actualErr)
 	// Delete the pod from cache, and verify that we get an empty status.
 	cache.Delete(podID)
 	expectedStatus := &PodStatus{ID: podID}
-	actualStatus, actualErr = cache.Get(podID)
+	actualStatus, _, actualErr = cache.Get(podID)
 	assert.Equal(t, expectedStatus, actualStatus)
 	assert.Equal(t, nil, actualErr)
 }

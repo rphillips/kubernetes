@@ -37,7 +37,7 @@ import (
 // populating the cache is expected to call Delete() to explicitly free the
 // cache entries.
 type Cache interface {
-	Get(types.UID) (*PodStatus, error)
+	Get(types.UID) (*PodStatus, bool, error)
 	// Set updates the cache by setting the PodStatus for the pod only
 	// if the data is newer than the cache based on the provided
 	// time stamp. Returns if the cache was updated.
@@ -85,11 +85,11 @@ func NewCache() Cache {
 
 // Get returns the PodStatus for the pod; callers are expected not to
 // modify the objects returned.
-func (c *cache) Get(id types.UID) (*PodStatus, error) {
+func (c *cache) Get(id types.UID) (*PodStatus, bool, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	d := c.get(id)
-	return d.status, d.err
+	return d.status, !d.modified.IsZero(), d.err
 }
 
 func (c *cache) GetNewerThan(id types.UID, minTime time.Time) (*PodStatus, error) {

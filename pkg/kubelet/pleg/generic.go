@@ -118,7 +118,8 @@ type podRecords map[types.UID]*podRecord
 // NewGenericPLEG instantiates a new GenericPLEG object and return it.
 func NewGenericPLEG(runtime kubecontainer.Runtime, eventChannel chan *PodLifecycleEvent,
 	relistDuration *RelistDuration, cache kubecontainer.Cache,
-	clock clock.Clock) PodLifecycleEventGenerator {
+	clock clock.Clock,
+) PodLifecycleEventGenerator {
 	return &GenericPLEG{
 		relistDuration: relistDuration,
 		runtime:        runtime,
@@ -322,7 +323,7 @@ func (g *GenericPLEG) Relist() {
 				// Fill up containerExitCode map for ContainerDied event when first time appeared
 				if len(containerExitCode) == 0 && pod != nil && g.cache != nil {
 					// Get updated podStatus
-					status, err := g.cache.Get(pod.ID)
+					status, _, err := g.cache.Get(pod.ID)
 					if err == nil {
 						for _, containerStatus := range status.ContainerStatuses {
 							containerExitCode[containerStatus.ID.ID] = containerStatus.ExitCode
@@ -409,7 +410,7 @@ func (g *GenericPLEG) getPodIPs(pid types.UID, status *kubecontainer.PodStatus) 
 		return status.IPs
 	}
 
-	oldStatus, err := g.cache.Get(pid)
+	oldStatus, _, err := g.cache.Get(pid)
 	if err != nil || len(oldStatus.IPs) == 0 {
 		return nil
 	}

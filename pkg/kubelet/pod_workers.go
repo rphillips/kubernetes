@@ -784,9 +784,9 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 			// Check to see if the pod is not running and the pod is terminal; if this succeeds then record in the podWorker that it is terminated.
 			// This is needed because after a kubelet restart, we need to ensure terminal pods will NOT be considered active in Pod Admission. See http://issues.k8s.io/105523
 			// However, `filterOutInactivePods`, considers pods that are actively terminating as active. As a result, `IsPodKnownTerminated()` needs to return true and thus `terminatedAt` needs to be set.
-			if statusCache, err := p.podCache.Get(uid); err == nil {
+			if statusCache, exists, err := p.podCache.Get(uid); err == nil {
 				klog.V(1).Infof("rphillips: podCache success: %+v is_terminal=%v", statusCache, isPodStatusCacheTerminal(statusCache))
-				if isPodStatusCacheTerminal(statusCache) {
+				if exists && isPodStatusCacheTerminal(statusCache) {
 					// At this point we know:
 					// (1) The pod is terminal based on the config source.
 					// (2) The pod is terminal based on the runtime cache.
@@ -873,9 +873,11 @@ func (p *podWorkers) UpdatePod(options UpdatePodOptions) {
 			status.terminatingAt = now
 			becameTerminating = true
 		case pod.Status.Phase == v1.PodFailed, pod.Status.Phase == v1.PodSucceeded:
-			klog.V(4).InfoS("Pod is in a terminal phase (success/failed), begin teardown", "pod", klog.KRef(ns, name), "podUID", uid, "updateType", options.UpdateType)
-			status.terminatingAt = now
-			becameTerminating = true
+			if !firstTime {
+				klog.V(4).InfoS("Pod is in a terminal phase (success/failed), begin teardown", "pod", klog.KRef(ns, name), "podUID", uid, "updateType", options.UpdateType)
+				status.terminatingAt = now
+				becameTerminating = true
+			}
 		case options.UpdateType == kubetypes.SyncPodKill:
 			if options.KillPodOptions != nil && options.KillPodOptions.Evict {
 				klog.V(4).InfoS("Pod is being evicted by the kubelet, begin teardown", "pod", klog.KRef(ns, name), "podUID", uid, "updateType", options.UpdateType)

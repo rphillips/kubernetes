@@ -569,6 +569,11 @@ func (dsc *DaemonSetsController) updatePod(logger klog.Logger, old, cur interfac
 		return
 	}
 
+	if curPod.Status.Phase == v1.PodSucceeded {
+		dsc.deletePod(logger, curPod)
+		return
+	}
+
 	curControllerRef := metav1.GetControllerOf(curPod)
 	oldControllerRef := metav1.GetControllerOf(oldPod)
 	controllerRefChanged := !reflect.DeepEqual(curControllerRef, oldControllerRef)

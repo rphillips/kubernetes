@@ -87,7 +87,8 @@ type EventedPLEG struct {
 // NewEventedPLEG instantiates a new EventedPLEG object and return it.
 func NewEventedPLEG(runtime kubecontainer.Runtime, runtimeService internalapi.RuntimeService, eventChannel chan *PodLifecycleEvent,
 	cache kubecontainer.Cache, genericPleg PodLifecycleEventGenerator, eventedPlegMaxStreamRetries int,
-	relistDuration *RelistDuration, clock clock.Clock) PodLifecycleEventGenerator {
+	relistDuration *RelistDuration, clock clock.Clock,
+) PodLifecycleEventGenerator {
 	return &EventedPLEG{
 		runtime:                     runtime,
 		runtimeService:              runtimeService,
@@ -300,7 +301,7 @@ func (e *EventedPLEG) getPodIPs(pid types.UID, status *kubecontainer.PodStatus) 
 		return status.IPs
 	}
 
-	oldStatus, err := e.cache.Get(pid)
+	oldStatus, _, err := e.cache.Get(pid)
 	if err != nil || len(oldStatus.IPs) == 0 {
 		return nil
 	}
@@ -347,7 +348,7 @@ func getPodSandboxState(podStatus *kubecontainer.PodStatus) kubecontainer.State 
 }
 
 func (e *EventedPLEG) updateRunningPodMetric(podStatus *kubecontainer.PodStatus) {
-	cachedPodStatus, err := e.cache.Get(podStatus.ID)
+	cachedPodStatus, _, err := e.cache.Get(podStatus.ID)
 	if err != nil {
 		klog.ErrorS(err, "Evented PLEG: Get cache", "podID", podStatus.ID)
 	}
@@ -378,7 +379,7 @@ func getContainerStateCount(podStatus *kubecontainer.PodStatus) map[kubecontaine
 }
 
 func (e *EventedPLEG) updateRunningContainerMetric(podStatus *kubecontainer.PodStatus) {
-	cachedPodStatus, err := e.cache.Get(podStatus.ID)
+	cachedPodStatus, _, err := e.cache.Get(podStatus.ID)
 	if err != nil {
 		klog.ErrorS(err, "Evented PLEG: Get cache", "podID", podStatus.ID)
 	}

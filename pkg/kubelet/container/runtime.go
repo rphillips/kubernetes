@@ -288,7 +288,7 @@ type Container struct {
 	// Hash of the container over fields with Resources field zero'd out.
 	// NOTE: This is needed during alpha and beta so that containers using Resources are
 	// not unexpectedly restarted when InPlacePodVerticalScaling feature-gate is toggled.
-	//TODO(vinaykul,InPlacePodVerticalScaling): Remove this in GA+1 and make HashWithoutResources to become Hash.
+	// TODO(vinaykul,InPlacePodVerticalScaling): Remove this in GA+1 and make HashWithoutResources to become Hash.
 	HashWithoutResources uint64
 	// State is the state of the container.
 	State State
@@ -312,6 +312,8 @@ type PodStatus struct {
 	SandboxStatuses []*runtimeapi.PodSandboxStatus
 	// Timestamp at which container and pod statuses were recorded
 	TimeStamp time.Time
+	// CacheMiss
+	CacheMiss bool
 }
 
 // ContainerResources represents the Resources allocated to the running container.
