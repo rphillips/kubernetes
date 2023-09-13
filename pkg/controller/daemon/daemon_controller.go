@@ -585,15 +585,31 @@ func (dsc *DaemonSetsController) updatePod(logger klog.Logger, old, cur interfac
 		if ds == nil {
 			return
 		}
-		logger.V(4).Info("Pod updated", "pod", klog.KObj(curPod))
-		dsc.enqueueDaemonSet(ds)
-		changedToReady := !podutil.IsPodReady(oldPod) && podutil.IsPodReady(curPod)
-		// See https://github.com/kubernetes/kubernetes/pull/38076 for more details
-		if changedToReady && ds.Spec.MinReadySeconds > 0 {
-			// Add a second to avoid milliseconds skew in AddAfter.
-			// See https://github.com/kubernetes/kubernetes/issues/39785#issuecomment-279959133 for more info.
-			dsc.enqueueDaemonSetAfter(ds, (time.Duration(ds.Spec.MinReadySeconds)*time.Second)+time.Second)
+
+		// check phase of pod if it has succeeded or failed. This is needed for kubelet graceful shutdowns.
+		if curPod.Status.Phase == v1.PodFailed || curPod.Status.Phase == v1.PodSucceeded {
+			if err := dsc.podControl.DeletePod(context.Background(), ds.Namespace, curPod.Name, ds); err != nil {
+				dsc.expectations.DeletionObserved(curPod.Name)
+				if !apierrors.IsNotFound(err) {
+					logger.V(2).Info("Failed deletion, decremented expectations for daemon set", "daemonset", klog.KObj(ds))
+					utilruntime.HandleError(err)
+				}
+			}
+			logger.V(4).Info("Pod done", "pod", klog.KObj(curPod))
+			dsc.deletePod(logger, curPod)
+			dsc.enqueueDaemonSet(ds)
+		} else {
+			logger.V(4).Info("Pod updated", "pod", klog.KObj(curPod))
+			dsc.enqueueDaemonSet(ds)
+			changedToReady := !podutil.IsPodReady(oldPod) && podutil.IsPodReady(curPod)
+			// See https://github.com/kubernetes/kubernetes/pull/38076 for more details
+			if changedToReady && ds.Spec.MinReadySeconds > 0 {
+				// Add a second to avoid milliseconds skew in AddAfter.
+				// See https://github.com/kubernetes/kubernetes/issues/39785#issuecomment-279959133 for more info.
+				dsc.enqueueDaemonSetAfter(ds, (time.Duration(ds.Spec.MinReadySeconds)*time.Second)+time.Second)
+			}
 		}
+
 		return
 	}
 
@@ -823,7 +839,6 @@ func (dsc *DaemonSetsController) podsShouldBeOnNode(
 	ds *apps.DaemonSet,
 	hash string,
 ) (nodesNeedingDaemonPods, podsToDelete []string) {
-
 	shouldRun, shouldContinueRunning := dsc.nodeShouldRunDaemonPod(node, ds)
 	daemonPods, exists := nodeToDaemonPods[node.Name]
 
@@ -1058,7 +1073,6 @@ func (dsc *DaemonSetsController) syncNodes(ctx context.Context, ds *apps.DaemonS
 
 				err := dsc.podControl.CreatePods(ctx, ds.Namespace, podTemplate,
 					ds, metav1.NewControllerRef(ds, controllerKind))
-
 				if err != nil {
 					if apierrors.HasStatusCause(err, v1.NamespaceTerminatingCause) {
 						// If the namespace is being torn down, we can safely ignore
@@ -1123,7 +1137,8 @@ func storeDaemonSetStatus(
 	updatedNumberScheduled,
 	numberAvailable,
 	numberUnavailable int,
-	updateObservedGen bool) error {
+	updateObservedGen bool,
+) error {
 	if int(ds.Status.DesiredNumberScheduled) == desiredNumberScheduled &&
 		int(ds.Status.CurrentNumberScheduled) == currentNumberScheduled &&
 		int(ds.Status.NumberMisscheduled) == numberMisscheduled &&
