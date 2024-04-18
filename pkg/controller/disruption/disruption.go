@@ -994,7 +994,6 @@ func (dc *DisruptionController) updatePdbStatus(ctx context.Context, pdb *policy
 		DisruptionsAllowed: disruptionsAllowed,
 		DisruptedPods:      disruptedPods,
 		ObservedGeneration: pdb.Generation,
-		Conditions:         newPdb.Status.Conditions,
 	}
 
 	pdbhelper.UpdateDisruptionAllowedCondition(newPdb)
