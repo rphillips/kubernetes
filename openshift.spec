@@ -87,6 +87,7 @@ Summary:        OpenShift Kubernetes Kubelet
 Requires:       util-linux
 Requires:       socat
 Requires:       iptables
+Requires:       chrony
 Provides:       kube-kubelet = %{version}
 
 %package kube-controller-manager
