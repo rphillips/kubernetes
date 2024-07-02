@@ -2255,7 +2255,7 @@ func getInlineFakePod(podName, podUUID, outerName, innerName string) *v1.Pod {
 	return pod
 }
 
-func getReconciler(kubeletDir string, t *testing.T, volumePaths []string, kubeClient *fake.Clientset) (Reconciler, *volumetesting.FakeVolumePlugin) {
+func getReconciler(kubeletDir string, t *testing.T, volumePaths []string) (Reconciler, *volumetesting.FakeVolumePlugin) {
 	node := getFakeNode()
 	volumePluginMgr, fakePlugin := volumetesting.GetTestKubeletVolumePluginMgrWithNodeAndRoot(t, node, kubeletDir)
 	tmpKubeletPodDir := filepath.Join(kubeletDir, "pods")
@@ -2263,10 +2263,7 @@ func getReconciler(kubeletDir string, t *testing.T, volumePaths []string, kubeCl
 
 	dsw := cache.NewDesiredStateOfWorld(volumePluginMgr, seLinuxTranslator)
 	asw := cache.NewActualStateOfWorld(nodeName, volumePluginMgr)
-	if kubeClient == nil {
-		kubeClient = createTestClient()
-	}
-
+	kubeClient := createTestClient()
 	fakeRecorder := &record.FakeRecorder{}
 	fakeHandler := volumetesting.NewBlockVolumePathHandler()
 	oex := operationexecutor.NewOperationExecutor(operationexecutor.NewOperationGenerator(
@@ -2512,7 +2509,7 @@ func TestSyncStates(t *testing.T) {
 				os.MkdirAll(vp, 0755)
 			}
 
-			rc, fakePlugin := getReconciler(tmpKubeletDir, t, mountPaths, nil /*custom kubeclient*/)
+			rc, fakePlugin := getReconciler(tmpKubeletDir, t, mountPaths)
 			rcInstance, _ := rc.(*reconciler)
 			logger, _ := ktesting.NewTestContext(t)
 			for _, tpodInfo := range tc.podInfos {

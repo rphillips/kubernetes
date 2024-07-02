@@ -874,8 +874,8 @@ func (fv *FakeVolume) GetSetUpDeviceCallCount() int {
 
 // Block volume support
 func (fv *FakeVolume) GetGlobalMapPath(spec *volume.Spec) (string, error) {
-	fv.Lock()
-	defer fv.Unlock()
+	fv.RLock()
+	defer fv.RUnlock()
 	fv.GlobalMapPathCallCount++
 	return fv.getGlobalMapPath()
 }
