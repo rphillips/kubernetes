@@ -44,7 +44,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/managed"
 	"k8s.io/kubernetes/pkg/kubelet/nodestatus"
 	"k8s.io/kubernetes/pkg/kubelet/sharedcpus"
-	"k8s.io/kubernetes/pkg/kubelet/util"
 	taintutil "k8s.io/kubernetes/pkg/util/taints"
 	volutil "k8s.io/kubernetes/pkg/volume/util"
 )
@@ -282,7 +281,7 @@ func (kl *Kubelet) updateDefaultLabels(initialNode, existingNode *v1.Node) bool 
 	if existingNode.Labels == nil {
 		existingNode.Labels = make(map[string]string)
 	}
-	//Set default labels but make sure to not set labels with empty values
+	// Set default labels but make sure to not set labels with empty values
 	for _, label := range defaultLabels {
 		if _, hasInitialValue := initialNode.Labels[label]; !hasInitialValue {
 			continue
@@ -604,15 +603,19 @@ func (kl *Kubelet) updateNodeStatus(ctx context.Context) error {
 func (kl *Kubelet) tryUpdateNodeStatus(ctx context.Context, tryNumber int) error {
 	// In large clusters, GET and PUT operations on Node objects coming
 	// from here are the majority of load on apiserver and etcd.
-	// To reduce the load on etcd, we are serving GET operations from
-	// apiserver cache (the data might be slightly delayed but it doesn't
+	// To reduce the load on control-plane, we are serving GET operations from
+	// local lister (the data might be slightly delayed but it doesn't
 	// seem to cause more conflict - the delays are pretty small).
 	// If it result in a conflict, all retries are served directly from etcd.
-	opts := metav1.GetOptions{}
+	var originalNode *v1.Node
+	var err error
+
 	if tryNumber == 0 {
-		util.FromApiserverCache(&opts)
+		originalNode, err = kl.nodeLister.Get(string(kl.nodeName))
+	} else {
+		opts := metav1.GetOptions{}
+		originalNode, err = kl.heartbeatClient.CoreV1().Nodes().Get(ctx, string(kl.nodeName), opts)
 	}
-	originalNode, err := kl.heartbeatClient.CoreV1().Nodes().Get(ctx, string(kl.nodeName), opts)
 	if err != nil {
 		return fmt.Errorf("error getting node %q: %v", kl.nodeName, err)
 	}
@@ -768,6 +771,7 @@ func (kl *Kubelet) setLastObservedNodeAddresses(addresses []v1.NodeAddress) {
 	defer kl.lastObservedNodeAddressesMux.Unlock()
 	kl.lastObservedNodeAddresses = addresses
 }
+
 func (kl *Kubelet) getLastObservedNodeAddresses() []v1.NodeAddress {
 	kl.lastObservedNodeAddressesMux.RLock()
 	defer kl.lastObservedNodeAddressesMux.RUnlock()
