@@ -35,7 +35,7 @@ var (
 			Subsystem:      kubeletSubsystem,
 			Name:           "http_requests_total",
 			Help:           "Number of the http requests received since the server started",
-			StabilityLevel: metrics.ALPHA,
+			StabilityLevel: metrics.STABLE,
 		},
 		// server_type aims to differentiate the readonly server and the readwrite server.
 		// long_running marks whether the request is long-running or not.
@@ -50,7 +50,7 @@ var (
 			Help:      "Duration in seconds to serve http requests",
 			// Use DefBuckets for now, will customize the buckets if necessary.
 			Buckets:        metrics.DefBuckets,
-			StabilityLevel: metrics.ALPHA,
+			StabilityLevel: metrics.STABLE,
 		},
 		[]string{"method", "path", "server_type", "long_running"},
 	)
@@ -60,7 +60,7 @@ var (
 			Subsystem:      kubeletSubsystem,
 			Name:           "http_inflight_requests",
 			Help:           "Number of the inflight http requests",
-			StabilityLevel: metrics.ALPHA,
+			StabilityLevel: metrics.STABLE,
 		},
 		[]string{"method", "path", "server_type", "long_running"},
 	)
@@ -72,7 +72,7 @@ var (
 			Name:           "volume_metric_collection_duration_seconds",
 			Help:           "Duration in seconds to calculate volume stats",
 			Buckets:        metrics.DefBuckets,
-			StabilityLevel: metrics.ALPHA,
+			StabilityLevel: metrics.STABLE,
 		},
 		[]string{"metric_source"},
 	)
