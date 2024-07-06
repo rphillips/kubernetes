@@ -78,7 +78,6 @@ import (
 	"k8s.io/kubernetes/pkg/apis/core/v1/validation"
 	"k8s.io/kubernetes/pkg/features"
 	kubeletconfiginternal "k8s.io/kubernetes/pkg/kubelet/apis/config"
-	apisgrpc "k8s.io/kubernetes/pkg/kubelet/apis/grpc"
 	"k8s.io/kubernetes/pkg/kubelet/apis/podresources"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/prober"
@@ -144,6 +143,7 @@ func (a *filteringContainer) Handle(path string, handler http.Handler) {
 	a.HandleWithFilter(path, handler)
 	a.registeredHandlePaths = append(a.registeredHandlePaths, path)
 }
+
 func (a *filteringContainer) RegisteredHandlePaths() []string {
 	return a.registeredHandlePaths
 }
@@ -155,8 +155,8 @@ func ListenAndServeKubeletServer(
 	kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	tlsOptions *TLSOptions,
 	auth AuthInterface,
-	tp oteltrace.TracerProvider) {
-
+	tp oteltrace.TracerProvider,
+) {
 	address := netutils.ParseIPSloppy(kubeCfg.Address)
 	port := uint(kubeCfg.Port)
 	klog.InfoS("Starting to listen", "address", address, "port", port)
@@ -190,7 +190,8 @@ func ListenAndServeKubeletReadOnlyServer(
 	host HostInterface,
 	resourceAnalyzer stats.ResourceAnalyzer,
 	address net.IP,
-	port uint) {
+	port uint,
+) {
 	klog.InfoS("Starting to listen read-only", "address", address, "port", port)
 	// TODO: https://github.com/kubernetes/kubernetes/issues/109829 tracer should use WithPublicEndpoint
 	s := NewServer(host, resourceAnalyzer, nil, oteltrace.NewNoopTracerProvider(), nil)
@@ -219,7 +220,7 @@ type PodResourcesProviders struct {
 
 // ListenAndServePodResources initializes a gRPC server to serve the PodResources service
 func ListenAndServePodResources(endpoint string, providers podresources.PodResourcesProviders) {
-	server := grpc.NewServer(apisgrpc.WithRateLimiter("podresources", podresources.DefaultQPS, podresources.DefaultBurstTokens))
+	server := grpc.NewServer()
 
 	podresourcesapiv1alpha1.RegisterPodResourcesListerServer(server, podresources.NewV1alpha1PodResourcesServer(providers))
 	podresourcesapi.RegisterPodResourcesListerServer(server, podresources.NewV1PodResourcesServer(providers))
@@ -271,8 +272,8 @@ func NewServer(
 	resourceAnalyzer stats.ResourceAnalyzer,
 	auth AuthInterface,
 	tp oteltrace.TracerProvider,
-	kubeCfg *kubeletconfiginternal.KubeletConfiguration) Server {
-
+	kubeCfg *kubeletconfiginternal.KubeletConfiguration,
+) Server {
 	server := Server{
 		host:                 host,
 		resourceAnalyzer:     resourceAnalyzer,
@@ -566,7 +567,8 @@ func (s *Server) InstallDebuggingDisabledHandlers() {
 	s.addMetricsBucketMatcher("logs")
 	paths := []string{
 		"/run/", "/exec/", "/attach/", "/portForward/", "/containerLogs/",
-		"/runningpods/", pprofBasePath, logsPath}
+		"/runningpods/", pprofBasePath, logsPath,
+	}
 	for _, p := range paths {
 		s.restfulCont.Handle(p, h)
 	}
@@ -1035,7 +1037,6 @@ func getURLRootPath(path string) string {
 
 	if parts[0] == "metrics" && len(parts) > 1 {
 		return fmt.Sprintf("%s/%s", parts[0], parts[1])
-
 	}
 	return parts[0]
 }
@@ -1099,9 +1100,11 @@ type prometheusHostAdapter struct {
 func (a prometheusHostAdapter) GetRequestedContainersInfo(containerName string, options cadvisorv2.RequestOptions) (map[string]*cadvisorapi.ContainerInfo, error) {
 	return a.host.GetRequestedContainersInfo(containerName, options)
 }
+
 func (a prometheusHostAdapter) GetVersionInfo() (*cadvisorapi.VersionInfo, error) {
 	return a.host.GetVersionInfo()
 }
+
 func (a prometheusHostAdapter) GetMachineInfo() (*cadvisorapi.MachineInfo, error) {
 	return a.host.GetCachedMachineInfo()
 }
