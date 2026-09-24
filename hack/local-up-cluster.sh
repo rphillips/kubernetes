@@ -111,6 +111,15 @@ STORAGE_MEDIA_TYPE=${STORAGE_MEDIA_TYPE:-"application/vnd.kubernetes.protobuf"}
 PRESERVE_ETCD="${PRESERVE_ETCD:-false}"
 ENABLE_TRACING=${ENABLE_TRACING:-false}
 
+# Enable quantum-resistant cryptography (ML-DSA) for kubelet certificate rotation.
+# When true, generates an ML-DSA signing CA, enables the CertificateSigningRequestMLDSA
+# feature gate, and configures the kubelet to use ML-DSA keys for certificate rotation.
+ENABLE_QUANTUM_CRYPTO=${ENABLE_QUANTUM_CRYPTO:-false}
+QUANTUM_CRYPTO_ALGORITHM=${QUANTUM_CRYPTO_ALGORITHM:-"ML-DSA-65"}
+if [[ "${ENABLE_QUANTUM_CRYPTO}" == "true" ]]; then
+  FEATURE_GATES="${FEATURE_GATES},CertificateSigningRequestMLDSA=true"
+fi
+
 # enable Kubernetes-CSI snapshotter
 ENABLE_CSI_SNAPSHOTTER=${ENABLE_CSI_SNAPSHOTTER:-false}
 
@@ -610,6 +619,128 @@ function generate_kubelet_certs {
     kube::util::write_client_kubeconfig "${CONTROLPLANE_SUDO}" "${CERT_DIR}" "${ROOT_CA_FILE}" "${API_HOST}" "${API_SECURE_PORT}" kubelet
 }
 
+function generate_quantum_signing_certs {
+    echo "Generating ML-DSA signing CA (${QUANTUM_CRYPTO_ALGORITHM})..."
+
+    local cert_file="${TMP_DIR}/quantum-signing-ca.crt"
+    local key_file="${TMP_DIR}/quantum-signing-ca.key"
+    local gen_dir="${TMP_DIR}/quantum-ca-gen"
+
+    local mldsa_variant
+    case "${QUANTUM_CRYPTO_ALGORITHM}" in
+        ML-DSA-44) mldsa_variant="MLDSA44" ;;
+        ML-DSA-65) mldsa_variant="MLDSA65" ;;
+        ML-DSA-87) mldsa_variant="MLDSA87" ;;
+        *)
+            echo "Unsupported quantum crypto algorithm: ${QUANTUM_CRYPTO_ALGORITHM}" >&2
+            exit 1
+            ;;
+    esac
+
+    mkdir -p "${gen_dir}"
+    cat > "${gen_dir}/go.mod" <<MODEOF
+module quantum-ca-gen
+
+go 1.27
+MODEOF
+
+    cat <<'GOEOF' > "${gen_dir}/main.go"
+package main
+
+import (
+	"crypto"
+	"crypto/mldsa"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
+	"math/big"
+	"os"
+	"time"
+)
+
+func main() {
+	if len(os.Args) != 4 {
+		fmt.Fprintf(os.Stderr, "usage: %s <variant> <cert-path> <key-path>\n", os.Args[0])
+		os.Exit(1)
+	}
+	variant, certPath, keyPath := os.Args[1], os.Args[2], os.Args[3]
+
+	var key crypto.Signer
+	var err error
+	switch variant {
+	case "MLDSA44":
+		key, err = mldsa.GenerateKey(mldsa.MLDSA44())
+	case "MLDSA65":
+		key, err = mldsa.GenerateKey(mldsa.MLDSA65())
+	case "MLDSA87":
+		key, err = mldsa.GenerateKey(mldsa.MLDSA87())
+	default:
+		fmt.Fprintf(os.Stderr, "unsupported variant: %s\n", variant)
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "generating key: %v\n", err)
+		os.Exit(1)
+	}
+
+	serial, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "quantum-signing-ca"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "creating certificate: %v\n", err)
+		os.Exit(1)
+	}
+	if err := writePEM(certPath, "CERTIFICATE", der); err != nil {
+		fmt.Fprintf(os.Stderr, "writing cert: %v\n", err)
+		os.Exit(1)
+	}
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshaling key: %v\n", err)
+		os.Exit(1)
+	}
+	if err := writePEM(keyPath, "PRIVATE KEY", keyDER); err != nil {
+		fmt.Fprintf(os.Stderr, "writing key: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func writePEM(path, typ string, data []byte) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return pem.Encode(f, &pem.Block{Type: typ, Bytes: data})
+}
+GOEOF
+
+    (cd "${gen_dir}" && go run main.go "${mldsa_variant}" "${cert_file}" "${key_file}")
+
+    CLUSTER_SIGNING_CERT_FILE="${cert_file}"
+    CLUSTER_SIGNING_KEY_FILE="${key_file}"
+
+    # Create a combined CA bundle so the API server trusts client certificates
+    # signed by both the traditional and quantum CAs. The original client-ca.crt
+    # is left untouched so cfssl can still use it to generate bootstrap certs.
+    cat "${CERT_DIR}/client-ca.crt" "${cert_file}" > "${TMP_DIR}/combined-client-ca.crt"
+    COMBINED_CLIENT_CA_FILE="${TMP_DIR}/combined-client-ca.crt"
+
+    echo "Quantum signing CA generated at ${cert_file}"
+}
+
 function start_apiserver {
     authorizer_args=()
     if [[ -n "${AUTHORIZATION_CONFIG:-}" ]]; then
@@ -660,6 +791,10 @@ function start_apiserver {
       generate_certs
     fi
 
+    if [[ "${ENABLE_QUANTUM_CRYPTO}" == "true" ]]; then
+      generate_quantum_signing_certs
+    fi
+
     if [[ -z "${EGRESS_SELECTOR_CONFIG_FILE:-}" ]]; then
       cat <<EOF > "${TMP_DIR}"/kube_egress_selector_configuration.yaml
 apiVersion: apiserver.k8s.io/v1beta1
@@ -704,7 +839,7 @@ EOF
       --audit-log-path="${LOG_DIR}/kube-apiserver-audit.log" \
       --cert-dir="${CERT_DIR}" \
       --egress-selector-config-file="${EGRESS_SELECTOR_CONFIG_FILE:-}" \
-      --client-ca-file="${CERT_DIR}/client-ca.crt" \
+      --client-ca-file="${COMBINED_CLIENT_CA_FILE:-${CERT_DIR}/client-ca.crt}" \
       --kubelet-client-certificate="${CERT_DIR}/client-kube-apiserver.crt" \
       --kubelet-certificate-authority="${CLUSTER_SIGNING_CERT_FILE}" \
       --kubelet-client-key="${CERT_DIR}/client-kube-apiserver.key" \
@@ -1049,6 +1184,13 @@ EOF
       # cpumanager policy options
       if [[ -n ${CPUMANAGER_POLICY_OPTIONS} ]]; then
 	parse_cpumanager_policy_options "${CPUMANAGER_POLICY_OPTIONS}"
+      fi
+
+      # quantum crypto key algorithm for certificate rotation
+      if [[ "${ENABLE_QUANTUM_CRYPTO}" == "true" ]]; then
+        echo "tlsMinVersion: \"VersionTLS13\""
+        echo "clientCertificateKeyAlgorithm: \"${QUANTUM_CRYPTO_ALGORITHM}\""
+        echo "serverCertificateKeyAlgorithm: \"${QUANTUM_CRYPTO_ALGORITHM}\""
       fi
 
     } >>"${TMP_DIR}"/kubelet.yaml
