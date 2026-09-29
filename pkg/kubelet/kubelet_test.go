@@ -27,6 +27,7 @@ import (
 	"reflect"
 	"regexp"
 	goruntime "runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -6153,6 +6154,138 @@ func TestHandlePodUpdates_ResizeTerminatingPods(t *testing.T) {
 
 				assertResizeHalted(t, kl)
 			})
+		})
+	}
+}
+
+func TestSyncPodSecurityProfileOCI(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SecurityProfileOCI, true)
+	transientErr := errors.New("failed to pull security profile: RegistryUnavailable: timeout")
+	rejectedErr := fmt.Errorf("%w: security profile %q: SecurityProfileInvalid: invalid content", images.ErrSecurityProfileRejected, "registry.example.com/profile@sha256:0")
+	runningStatus := &kubecontainer.PodStatus{SandboxStatuses: []*runtimeapi.PodSandboxStatus{{
+		Id:       "sandbox",
+		Metadata: &runtimeapi.PodSandboxMetadata{Name: "oci", Namespace: "new", Uid: "12345678"},
+		State:    runtimeapi.PodSandboxState_SANDBOX_READY,
+		Network:  &runtimeapi.PodSandboxNetworkStatus{Ip: "10.0.0.1"},
+	}}}
+	for _, tc := range []struct {
+		name             string
+		err              error
+		podStatus        *kubecontainer.PodStatus
+		expectedTerminal bool
+		expectedErr      bool
+		expectedSync     bool
+	}{{
+		name:         "pulled",
+		expectedSync: true,
+	}, {
+		name:        "transient failure is retried",
+		err:         transientErr,
+		expectedErr: true,
+	}, {
+		name:             "rejected profile fails the pod",
+		err:              rejectedErr,
+		expectedTerminal: true,
+	}, {
+		name:        "transient failure stops the sync of a running pod",
+		err:         transientErr,
+		podStatus:   runningStatus,
+		expectedErr: true,
+	}, {
+		name:        "rejected profile stops the sync of a running pod without failing it",
+		err:         rejectedErr,
+		podStatus:   runningStatus,
+		expectedErr: true,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			tCtx := ktesting.Init(t)
+			testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
+			defer testKubelet.Cleanup()
+			kubelet := testKubelet.kubelet
+			fakeRuntime := testKubelet.fakeRuntime
+			fakeRuntime.EnsureSecurityProfilesErr = tc.err
+
+			pod := podWithUIDNameNsSpec("12345678", "oci", "new", v1.PodSpec{Containers: []v1.Container{{Name: "foo"}}})
+			kubelet.podManager.SetPods([]*v1.Pod{pod})
+			podStatus := tc.podStatus
+			if podStatus == nil {
+				podStatus = &kubecontainer.PodStatus{}
+			}
+			isTerminal, _, err := kubelet.SyncPod(tCtx, kubetypes.SyncPodCreate, pod, nil, podStatus)
+			assert.Equal(t, tc.expectedTerminal, isTerminal)
+			assert.Equal(t, tc.expectedErr, err != nil, "error: %v", err)
+			assert.Contains(t, fakeRuntime.CalledFunctions, "EnsureSecurityProfiles")
+			assert.Equal(t, tc.expectedSync, slices.Contains(fakeRuntime.CalledFunctions, "SyncPod"))
+			if tc.expectedTerminal {
+				status, found := kubelet.statusManager.GetPodStatus(pod.UID)
+				require.True(t, found)
+				assert.Equal(t, v1.PodFailed, status.Phase)
+				assert.Equal(t, securityProfileRejectedReason, status.Reason)
+			}
+		})
+	}
+}
+
+func TestSyncPodSecurityProfileOCIDisabled(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SecurityProfileOCI, false)
+	tCtx := ktesting.Init(t)
+	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
+	defer testKubelet.Cleanup()
+	pod := podWithUIDNameNsSpec("12345678", "oci", "new", v1.PodSpec{Containers: []v1.Container{{Name: "foo"}}})
+	testKubelet.kubelet.podManager.SetPods([]*v1.Pod{pod})
+	_, _, err := testKubelet.kubelet.SyncPod(tCtx, kubetypes.SyncPodCreate, pod, nil, &kubecontainer.PodStatus{})
+	require.NoError(t, err)
+	assert.NotContains(t, testKubelet.fakeRuntime.CalledFunctions, "EnsureSecurityProfiles")
+}
+
+type fakeSecurityProfileGCManager struct {
+	collections int
+}
+
+func (f *fakeSecurityProfileGCManager) GarbageCollect(context.Context) error {
+	f.collections++
+	return nil
+}
+
+// TestCollectSecurityProfiles checks the guards of the security profile
+// garbage collection: nothing is collected while the runtime does not report
+// support or while a pod source is not ready, because the profiles of the pods
+// it has not delivered yet would look unused.
+func TestCollectSecurityProfiles(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		features     *kubecontainer.RuntimeFeatures
+		sourcesReady bool
+		collections  int
+	}{{
+		name:         "runtime support and sources ready",
+		features:     &kubecontainer.RuntimeFeatures{SeccompProfileOCI: true},
+		sourcesReady: true,
+		collections:  1,
+	}, {
+		name:         "sources not ready",
+		features:     &kubecontainer.RuntimeFeatures{SeccompProfileOCI: true},
+		sourcesReady: false,
+	}, {
+		name:         "runtime without support",
+		features:     &kubecontainer.RuntimeFeatures{},
+		sourcesReady: true,
+	}, {
+		name:         "runtime features unknown",
+		sourcesReady: true,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			tCtx := ktesting.Init(t)
+			testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
+			defer testKubelet.Cleanup()
+			kubelet := testKubelet.kubelet
+			gc := &fakeSecurityProfileGCManager{}
+			kubelet.securityProfileGCManager = gc
+			kubelet.runtimeState.setRuntimeFeatures(tc.features)
+			kubelet.sourcesReady = config.NewSourcesReady(func(_ sets.Set[string]) bool { return tc.sourcesReady })
+
+			kubelet.collectSecurityProfiles(tCtx)
+			assert.Equal(t, tc.collections, gc.collections)
 		})
 	}
 }
