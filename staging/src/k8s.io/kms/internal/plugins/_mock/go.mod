@@ -24,3 +24,5 @@ require (
 replace k8s.io/kms => ../../../../kms
 
 replace github.com/container-storage-interface/spec => github.com/gnufied/spec v1.7.1-0.20260718120346-8e06851c4133
+
+replace github.com/onsi/ginkgo/v2 => github.com/openshift/onsi-ginkgo/v2 v2.6.1-0.20260807173042-3ac00363bb14
