@@ -6181,35 +6181,34 @@ func TestSyncPodSecurityProfileOCI(t *testing.T) {
 		name             string
 		err              error
 		podStatus        *kubecontainer.PodStatus
+		expectedEnsure   bool
 		expectedTerminal bool
 		expectedErr      bool
 		expectedSync     bool
 	}{{
-		name:         "pulled",
-		expectedSync: true,
+		name:           "pulled",
+		expectedEnsure: true,
+		expectedSync:   true,
 	}, {
-		name:        "transient failure is retried",
-		err:         transientErr,
-		expectedErr: true,
+		name:           "transient failure is retried",
+		err:            transientErr,
+		expectedEnsure: true,
+		expectedErr:    true,
 	}, {
 		name:             "rejected profile fails the pod",
 		err:              rejectedErr,
+		expectedEnsure:   true,
 		expectedTerminal: true,
 	}, {
-		name:        "transient failure stops the sync of a running pod",
-		err:         transientErr,
-		podStatus:   runningStatus,
-		expectedErr: true,
+		name:         "running pod is synced without pulling its profiles up front",
+		err:          transientErr,
+		podStatus:    runningStatus,
+		expectedSync: true,
 	}, {
-		name:        "rejected profile stops the sync of a running pod without failing it",
-		err:         rejectedErr,
-		podStatus:   runningStatus,
-		expectedErr: true,
-	}, {
-		name:        "rejected profile stops the sync of a pod with exited containers without failing it",
-		err:         rejectedErr,
-		podStatus:   exitedStatus,
-		expectedErr: true,
+		name:         "pod with exited containers is not failed on rejection",
+		err:          rejectedErr,
+		podStatus:    exitedStatus,
+		expectedSync: true,
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
 			tCtx := ktesting.Init(t)
@@ -6228,7 +6227,7 @@ func TestSyncPodSecurityProfileOCI(t *testing.T) {
 			isTerminal, _, err := kubelet.SyncPod(tCtx, kubetypes.SyncPodCreate, pod, nil, podStatus)
 			assert.Equal(t, tc.expectedTerminal, isTerminal)
 			assert.Equal(t, tc.expectedErr, err != nil, "error: %v", err)
-			assert.Contains(t, fakeRuntime.CalledFunctions, "EnsureSecurityProfiles")
+			assert.Equal(t, tc.expectedEnsure, slices.Contains(fakeRuntime.CalledFunctions, "EnsureSecurityProfiles"))
 			assert.Equal(t, tc.expectedSync, slices.Contains(fakeRuntime.CalledFunctions, "SyncPod"))
 			if tc.expectedTerminal {
 				status, found := kubelet.statusManager.GetPodStatus(pod.UID)

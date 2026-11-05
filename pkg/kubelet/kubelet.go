@@ -2316,18 +2316,17 @@ func (kl *Kubelet) SyncPod(ctx context.Context, updateType kubetypes.SyncPodType
 	// Fetch the pull secrets for the pod
 	pullSecrets, missingPullSecretNames := kl.getPullSecretsForPod(logger, pod)
 
-	// Pull the OCI security profiles before the runtime prepares resources or
-	// creates the sandbox, so that a failed pull needs no cleanup. A failure
-	// stops the sync here, so that no container is created with a profile the
-	// runtime refused: the containers of a started pod keep running, and a
-	// pod that has not started is failed on a permanent rejection.
-	if utilfeature.DefaultFeatureGate.Enabled(features.SecurityProfileOCI) {
+	// Pull the OCI security profiles of a pod that has not started before the
+	// runtime prepares resources or creates the sandbox, so that a failed pull
+	// needs no cleanup and a permanent rejection fails the pod. A pod with a
+	// sandbox or a container, running or exited, in its cached status has
+	// started: the runtime pulls each of its profiles when it creates the
+	// container that uses it, so that a failure holds back only that container
+	// and the rest of the pod keeps being synced.
+	podStarted := podStatus != nil && (len(podStatus.SandboxStatuses) > 0 || len(podStatus.ContainerStatuses) > 0)
+	if utilfeature.DefaultFeatureGate.Enabled(features.SecurityProfileOCI) && !podStarted {
 		if err := kl.containerRuntime.EnsureSecurityProfiles(ctx, pod, podStatus, pullSecrets); err != nil {
-			// A pod with a sandbox or a container, running or exited, in its
-			// cached status has started, so its rejection is retried instead
-			// of failing it.
-			podStarted := podStatus != nil && (len(podStatus.SandboxStatuses) > 0 || len(podStatus.ContainerStatuses) > 0)
-			if !podStarted && errors.Is(err, images.ErrSecurityProfileRejected) {
+			if errors.Is(err, images.ErrSecurityProfileRejected) {
 				kl.rejectPod(ctx, pod, securityProfileRejectedReason, strings.TrimPrefix(err.Error(), images.ErrSecurityProfileRejected.Error()+": "))
 				recordAdmissionRejection(securityProfileRejectedReason)
 				return true, nil, nil

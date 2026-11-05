@@ -104,9 +104,11 @@ type Runtime interface {
 	// will be GC'd.
 	// TODO: Revisit this method and make it cleaner.
 	GarbageCollect(ctx context.Context, gcPolicy GCPolicy, allSourcesReady bool, evictNonDeletedPods bool) error
-	// EnsureSecurityProfiles pulls the OCI security profiles referenced by the
-	// pod. Permanent failures are marked so that the caller can fail a pod
-	// that has not started (see pkg/kubelet/images).
+	// EnsureSecurityProfiles pulls the OCI security profiles referenced by a
+	// pod that has not started. Permanent failures are marked so that the
+	// caller can fail the pod (see pkg/kubelet/images). Once the pod has
+	// started, SyncPod pulls each profile when it creates the container that
+	// uses it.
 	EnsureSecurityProfiles(ctx context.Context, pod *v1.Pod, podStatus *PodStatus, pullSecrets []v1.Secret) error
 	// SyncPod syncs the running pod into the desired pod.
 	SyncPod(ctx context.Context, pod *v1.Pod, podStatus *PodStatus, pullSecrets []v1.Secret, backOff *flowcontrol.Backoff, restartAllContainers bool) PodSyncResult

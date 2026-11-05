@@ -32,9 +32,7 @@ import (
 )
 
 // EnsureSecurityProfiles pulls every OCI security profile referenced by the
-// pod, once per unique reference. It runs on every pod sync, so that a
-// profile removed from the runtime's storage is pulled again before
-// containers that use it are created.
+// pod, once per unique reference, before the pod's sandbox is created.
 func (m *kubeGenericRuntimeManager) EnsureSecurityProfiles(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus, pullSecrets []v1.Secret) error {
 	refs := kubecontainer.SecurityProfileOCIRefs(pod)
 	if len(refs) == 0 {
