@@ -41,6 +41,9 @@ var (
 	// ErrInvalidImageName - Unable to parse the image name.
 	ErrInvalidImageName = errors.New("InvalidImageName")
 
+	// ErrSecurityProfilePull - General security profile pull error
+	ErrSecurityProfilePull = errors.New("ErrSecurityProfilePull")
+
 	// ErrSecurityProfileRejected - The container runtime permanently rejected a security profile.
 	ErrSecurityProfileRejected = errors.New("SecurityProfileRejected")
 

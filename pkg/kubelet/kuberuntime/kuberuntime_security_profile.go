@@ -18,13 +18,17 @@ package kuberuntime
 
 import (
 	"context"
+	"errors"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	ref "k8s.io/client-go/tools/reference"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/features"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
+	"k8s.io/kubernetes/pkg/kubelet/images"
 )
 
 // EnsureSecurityProfiles pulls every OCI security profile referenced by the
@@ -71,4 +75,36 @@ func (m *kubeGenericRuntimeManager) EnsureSecurityProfiles(ctx context.Context, 
 		}
 	}
 	return nil
+}
+
+// ensureContainerSecurityProfile pulls the OCI seccomp profile of a container
+// right before the container is created. The profile may have been garbage
+// collected since the pod started, and a failure must hold back only this
+// container, not the sync of the rest of the pod. It returns a message and one
+// of the well-defined errors that startContainer reports.
+func (m *kubeGenericRuntimeManager) ensureContainerSecurityProfile(ctx context.Context, objRef *v1.ObjectReference, pod *v1.Pod, container *v1.Container, pullSecrets []v1.Secret, podSandboxConfig *runtimeapi.PodSandboxConfig, podRuntimeHandler string) (string, error) {
+	if !utilfeature.DefaultFeatureGate.Enabled(features.SecurityProfileOCI) {
+		return "", nil
+	}
+	var profile *v1.SeccompProfile
+	if container.SecurityContext != nil && container.SecurityContext.SeccompProfile != nil {
+		profile = container.SecurityContext.SeccompProfile
+	} else if pod.Spec.SecurityContext != nil {
+		profile = pod.Spec.SecurityContext.SeccompProfile
+	}
+	if profile == nil || profile.Type != v1.SeccompProfileTypeOCI || profile.OCI == nil {
+		return "", nil
+	}
+
+	err := m.imagePuller.EnsureSecurityProfile(ctx, objRef, pod, profile.OCI.Ref, runtimeapi.SecurityProfileKind_Seccomp, pullSecrets, podSandboxConfig, podRuntimeHandler)
+	switch {
+	case err == nil:
+		return "", nil
+	case errors.Is(err, kubecontainer.ErrSecurityProfilePullBackOff):
+		return err.Error(), kubecontainer.ErrSecurityProfilePullBackOff
+	case errors.Is(err, images.ErrSecurityProfileRejected):
+		return err.Error(), images.ErrSecurityProfileRejected
+	default:
+		return err.Error(), images.ErrSecurityProfilePull
+	}
 }

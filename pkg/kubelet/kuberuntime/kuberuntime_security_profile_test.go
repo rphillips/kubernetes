@@ -37,6 +37,7 @@ import (
 	"k8s.io/kubernetes/pkg/credentialprovider"
 	"k8s.io/kubernetes/pkg/features"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
+	"k8s.io/kubernetes/pkg/kubelet/images"
 )
 
 const (
@@ -203,4 +204,115 @@ func TestEnsureSecurityProfiles(t *testing.T) {
 	fakeImageService.Called = nil
 	require.NoError(t, m.EnsureSecurityProfiles(tCtx, &v1.Pod{Spec: v1.PodSpec{Containers: []v1.Container{{Name: "c"}}}}, &kubecontainer.PodStatus{}, nil))
 	assert.Zero(t, countCalls(fakeImageService.Called, "PullSecurityProfile"))
+}
+
+func TestStartContainerSecurityProfile(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SecurityProfileOCI, true)
+	rejectedErr := status.Errorf(codes.InvalidArgument, "%s: invalid content", crierrors.ErrSecurityProfileInvalid)
+	transientErr := fmt.Errorf("%w: timeout", crierrors.ErrRegistryUnavailable)
+
+	for _, tc := range []struct {
+		name         string
+		podProfile   *v1.SeccompProfile
+		ctrProfile   *v1.SeccompProfile
+		pullErrs     []error
+		starts       int
+		expectedErr  error
+		expectedRef  string
+		expectedPull int
+	}{{
+		name:   "no OCI profile does not call the runtime",
+		starts: 1,
+	}, {
+		name:         "container profile is pulled",
+		ctrProfile:   ociSeccompProfile(testProfileRef, nil),
+		starts:       1,
+		expectedRef:  testProfileRef,
+		expectedPull: 1,
+	}, {
+		name:         "pod profile is inherited",
+		podProfile:   ociSeccompProfile(testProfileRef, nil),
+		starts:       1,
+		expectedRef:  testProfileRef,
+		expectedPull: 1,
+	}, {
+		name:         "container profile overrides the pod profile",
+		podProfile:   ociSeccompProfile(testProfileRef, nil),
+		ctrProfile:   ociSeccompProfile(testOtherProfileRef, nil),
+		starts:       1,
+		expectedRef:  testOtherProfileRef,
+		expectedPull: 1,
+	}, {
+		name:         "non-OCI container profile overrides an OCI pod profile",
+		podProfile:   ociSeccompProfile(testProfileRef, nil),
+		ctrProfile:   &v1.SeccompProfile{Type: v1.SeccompProfileTypeRuntimeDefault},
+		starts:       1,
+		expectedPull: 0,
+	}, {
+		name:         "rejection",
+		ctrProfile:   ociSeccompProfile(testProfileRef, nil),
+		pullErrs:     []error{rejectedErr},
+		starts:       1,
+		expectedErr:  images.ErrSecurityProfileRejected,
+		expectedPull: 1,
+	}, {
+		name:         "transient failure",
+		ctrProfile:   ociSeccompProfile(testProfileRef, nil),
+		pullErrs:     []error{transientErr},
+		starts:       1,
+		expectedErr:  images.ErrSecurityProfilePull,
+		expectedPull: 1,
+	}, {
+		name:         "back-off after a failure",
+		ctrProfile:   ociSeccompProfile(testProfileRef, nil),
+		pullErrs:     []error{transientErr},
+		starts:       2,
+		expectedErr:  kubecontainer.ErrSecurityProfilePullBackOff,
+		expectedPull: 1,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			tCtx := ktesting.Init(t)
+			fakeRuntime, fakeImageService, m, err := createTestRuntimeManager(tCtx)
+			require.NoError(t, err)
+
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "default", UID: "12345678"},
+				Spec: v1.PodSpec{
+					SecurityContext: &v1.PodSecurityContext{SeccompProfile: tc.podProfile},
+					Containers: []v1.Container{{
+						Name:            "foo",
+						Image:           "busybox",
+						ImagePullPolicy: v1.PullIfNotPresent,
+						SecurityContext: &v1.SecurityContext{SeccompProfile: tc.ctrProfile},
+					}},
+				},
+			}
+			sandbox, _ := makeAndSetFakePod(tCtx, m, fakeRuntime, pod)
+			sandboxConfig, err := m.generatePodSandboxConfig(tCtx, pod, 0)
+			require.NoError(t, err)
+			for _, e := range tc.pullErrs {
+				fakeImageService.InjectError("PullSecurityProfile", e)
+			}
+			fakeRuntime.Called = nil
+
+			for range tc.starts {
+				_, err = m.startContainer(tCtx, sandbox.Id, sandboxConfig, containerStartSpec(&pod.Spec.Containers[0]), pod, &kubecontainer.PodStatus{}, nil, "", nil, nil)
+			}
+			if tc.expectedErr != nil {
+				// The error is a sentinel so that the container's waiting
+				// reason and the start error metric stay bounded.
+				assert.Equal(t, tc.expectedErr, err)
+				assert.Zero(t, countCalls(fakeRuntime.Called, "CreateContainer"), "no container is created without its profile")
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, 1, countCalls(fakeRuntime.Called, "CreateContainer"))
+			}
+			assert.Equal(t, tc.expectedPull, countCalls(fakeImageService.Called, "PullSecurityProfile"))
+			if tc.expectedRef != "" {
+				fakeImageService.Lock()
+				assert.Contains(t, fakeImageService.SecurityProfiles, tc.expectedRef)
+				fakeImageService.Unlock()
+			}
+		})
+	}
 }
