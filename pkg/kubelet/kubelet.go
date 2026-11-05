@@ -2323,9 +2323,10 @@ func (kl *Kubelet) SyncPod(ctx context.Context, updateType kubetypes.SyncPodType
 	// pod that has not started is failed on a permanent rejection.
 	if utilfeature.DefaultFeatureGate.Enabled(features.SecurityProfileOCI) {
 		if err := kl.containerRuntime.EnsureSecurityProfiles(ctx, pod, podStatus, pullSecrets); err != nil {
-			// A pod with a running or exited container in its cached status
-			// has started, so its rejection is retried instead of failing it.
-			podStarted := podStatus != nil && !isPodStatusCacheTerminal(podStatus)
+			// A pod with a sandbox or a container, running or exited, in its
+			// cached status has started, so its rejection is retried instead
+			// of failing it.
+			podStarted := podStatus != nil && (len(podStatus.SandboxStatuses) > 0 || len(podStatus.ContainerStatuses) > 0)
 			if !podStarted && errors.Is(err, images.ErrSecurityProfileRejected) {
 				kl.rejectPod(ctx, pod, securityProfileRejectedReason, strings.TrimPrefix(err.Error(), images.ErrSecurityProfileRejected.Error()+": "))
 				recordAdmissionRejection(securityProfileRejectedReason)

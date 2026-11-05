@@ -6168,6 +6168,15 @@ func TestSyncPodSecurityProfileOCI(t *testing.T) {
 		State:    runtimeapi.PodSandboxState_SANDBOX_READY,
 		Network:  &runtimeapi.PodSandboxNetworkStatus{Ip: "10.0.0.1"},
 	}}}
+	// For example after a node reboot.
+	exitedStatus := &kubecontainer.PodStatus{
+		SandboxStatuses: []*runtimeapi.PodSandboxStatus{{
+			Id:       "sandbox",
+			Metadata: &runtimeapi.PodSandboxMetadata{Name: "oci", Namespace: "new", Uid: "12345678"},
+			State:    runtimeapi.PodSandboxState_SANDBOX_NOTREADY,
+		}},
+		ContainerStatuses: []*kubecontainer.Status{{Name: "foo", State: kubecontainer.ContainerStateExited}},
+	}
 	for _, tc := range []struct {
 		name             string
 		err              error
@@ -6195,6 +6204,11 @@ func TestSyncPodSecurityProfileOCI(t *testing.T) {
 		name:        "rejected profile stops the sync of a running pod without failing it",
 		err:         rejectedErr,
 		podStatus:   runningStatus,
+		expectedErr: true,
+	}, {
+		name:        "rejected profile stops the sync of a pod with exited containers without failing it",
+		err:         rejectedErr,
+		podStatus:   exitedStatus,
 		expectedErr: true,
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
